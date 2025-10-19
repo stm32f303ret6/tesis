@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(timeout:*)",
+      "Bash(chmod:*)",
+      "Bash(pip install:*)",
+      "Bash(MUJOCO_GL=egl timeout 5 python3 diagonal_gait.py)",
+      "Read(//home/rsc/.ssh/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

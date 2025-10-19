@@ -1,0 +1,231 @@
+<mujoco model="four_fivebar_planar_xz">
+  <compiler angle="radian" meshdir="assets" autolimits="true"/>
+  <option gravity="0 0 -9.81" timestep="0.001" integrator="implicitfast"/>
+
+  <default>
+    <joint damping="0.02" armature="0.0002" limited="false"/>
+    <geom  contype="1" conaffinity="1" friction="0.6 0.1 0.1"/>
+  </default>
+
+  <asset>
+    <material name="mat_left_arm"  rgba="0.6 0.0 0.0 1"/>
+    <material name="mat_right_arm" rgba="0.0 0.6 0.0 1"/>
+    <material name="mat_tilt" rgba="0.2 0.2 0.2 1"/>
+    <material name="mat_servo" rgba="0.2 0.2 0.2 1"/>
+    <material name="mat_plastic" rgba="0.8 0.8 0.8 1"/>
+    <mesh file="shoulder_arm.stl" scale="0.001 0.001 0.001" name="shoulder_arm"/>
+    <mesh file="elbow_arm.stl" scale="0.001 0.001 0.001" name="elbow_arm"/>
+    <mesh file="two_servo_base.stl" scale="0.001 0.001 0.001" name="two_servo_base"/>
+    <mesh file="two_servo.stl" scale="0.001 0.001 0.001" name="two_servo"/>
+    <mesh file="shoulder_right_arm.stl" scale="0.001 0.001 0.001" name="shoulder_right_arm"/>
+    <mesh file="elbow_right_arm.stl" scale="0.001 0.001 0.001" name="elbow_right_arm"/>
+    <mesh file="servo_tilt.stl" scale="0.001 0.001 0.001" name="servo_tilt"/>
+    <mesh file="base_tilt.stl" scale="0.001 0.001 0.001" name="base_tilt"/>
+  </asset>
+
+  <worldbody>
+
+    <body name="robot" pos="0 0 0.11">
+      <joint type="free" />
+      <geom type="mesh" mesh="base_tilt" pos="0 0 0" material="mat_plastic"/>
+      <geom type="mesh" mesh="servo_tilt" pos="0.042 0.038 0.012" material="mat_servo"/>
+      <geom type="mesh" mesh="servo_tilt" pos="0.042 -0.038 0.012" euler="3.14159 0 0" material="mat_servo"/>
+      <geom type="mesh" mesh="servo_tilt" pos="-0.042 0.018 0.012" euler="0 0 3.14159" material="mat_servo"/>
+      <geom type="mesh" mesh="servo_tilt" pos="-0.042 -0.018 0.012" euler="3.14159 0 3.14159" material="mat_servo"/>
+      <geom name="box_geom" type="box" pos="0 0 -0.01" size="0.0375 0.04 0.01" rgba="0.1 0.1 0.8 1"/>
+      <!-- =========================
+           FRONT LEFT
+           ========================= -->
+      <body name="leg_FL" pos="0.075 -0.038 0.0125">
+
+        <!-- Tilt added (already in your file) -->
+        <joint name="FL_tilt" type="hinge" axis="1 0 0"/>
+        <geom type="mesh" mesh="two_servo" material="mat_servo"/>
+        <geom type="mesh" mesh="two_servo_base" material="mat_plastic"/>
+
+        <!-- Left base -->
+        <body name="FL_base_left" pos="-0.01 -0.024 -0.005">
+          <body name="FL_shoulder_left" pos="0 0 -0.005" euler="0 0 0">
+            <joint name="FL_shoulder_L" type="hinge" axis="0 -1 0"/>
+            <geom type="mesh" mesh="shoulder_arm" material="mat_plastic"/>
+
+            <body name="FL_elbow_left" pos="0 0.0035 -0.045">
+              <joint name="FL_elbow_L" type="hinge" axis="0 -1 0"/>
+              <geom type="mesh" mesh="elbow_arm" material="mat_plastic"/>
+              <site  name="FL_tip_L" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <!-- Right base -->
+        <body name="FL_base_right" pos="0.01 -0.024 -0.005">
+          <body name="FL_shoulder_right" pos="0 0 -0.005">
+            <joint name="FL_shoulder_R" type="hinge" axis="0 -1 0"/>
+            <geom type="mesh" mesh="shoulder_arm" material="mat_plastic"/>
+
+            <body name="FL_elbow_right" pos="0 -0.0035 -0.045">
+              <joint name="FL_elbow_R" type="hinge" axis="0 -1 0"/>
+              <geom type="mesh" mesh="elbow_arm" material="mat_plastic"/>
+              <site  name="FL_tip_R" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- =========================
+           FRONT RIGHT
+           ========================= -->
+      <body name="leg_FR" pos="0.075 0.038 0.0125">
+        <!-- Tilt added (already in your file) -->
+        <joint name="FR_tilt" type="hinge" axis="1 0 0"/>
+        <geom type="mesh" mesh="two_servo" material="mat_servo" euler="0 0 3.141592"/>
+        <geom type="mesh" mesh="two_servo_base" material="mat_plastic"/>
+
+        <body name="FR_base_left" pos="-0.01 0.024 -0.005" >
+          <body name="FR_shoulder_left" pos="0 0 -0.005" euler="0 0 0">
+            <joint name="FR_shoulder_L" type="hinge" axis="0 1 0"/>
+            <geom type="mesh" mesh="shoulder_right_arm" material="mat_plastic"/>
+
+            <body name="FR_elbow_left" pos="0 -0.0035 -0.045">
+              <joint name="FR_elbow_L" type="hinge" axis="0 1 0"/>
+              <geom type="mesh" mesh="elbow_right_arm" material="mat_plastic"/>
+              <site  name="FR_tip_L" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <body name="FR_base_right" pos="0.01 0.024 -0.005">
+          <body name="FR_shoulder_right" pos="0 0 -0.005">
+            <joint name="FR_shoulder_R" type="hinge" axis="0 1 0"/>
+            <geom type="mesh" mesh="shoulder_right_arm" material="mat_plastic"/>
+
+            <body name="FR_elbow_right" pos="0 0.0035 -0.045">
+              <joint name="FR_elbow_R" type="hinge" axis="0 1 0"/>
+              <geom type="mesh" mesh="elbow_right_arm" material="mat_plastic"/>
+              <site  name="FR_tip_R" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- =========================
+           REAR LEFT
+           ========================= -->
+      <body name="leg_RL" pos="-0.075 -0.038 0.0125">
+        <!-- Tilt added (already in your file) -->
+        <joint name="RL_tilt" type="hinge" axis="1 0 0"/>
+        <geom type="mesh" mesh="two_servo" material="mat_servo" />
+        <geom type="mesh" mesh="two_servo_base" euler="0 0 3.141592" material="mat_plastic"/>
+
+        <body name="RL_base_left" pos="-0.01 -0.024 -0.005">
+          <body name="RL_shoulder_left" pos="0 0 -0.005" euler="0 0 0">
+            <joint name="RL_shoulder_L" type="hinge" axis="0 -1 0"/>
+            <geom type="mesh" mesh="shoulder_arm" material="mat_plastic"/>
+
+            <body name="RL_elbow_left" pos="0 0.0035 -0.045">
+              <joint name="RL_elbow_L" type="hinge" axis="0 -1 0"/>
+              <geom type="mesh" mesh="elbow_arm" material="mat_plastic"/>
+              <site  name="RL_tip_L" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <body name="RL_base_right" pos="0.01 -0.024 -0.005">
+          <body name="RL_shoulder_right" pos="0 0 -0.005">
+            <joint name="RL_shoulder_R" type="hinge" axis="0 -1 0"/>
+            <geom type="mesh" mesh="shoulder_arm" material="mat_plastic"/>
+
+            <body name="RL_elbow_right" pos="0 -0.0035 -0.045">
+              <joint name="RL_elbow_R" type="hinge" axis="0 -1 0"/>
+              <geom type="mesh" mesh="elbow_arm" material="mat_plastic"/>
+              <site  name="RL_tip_R" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- =========================
+           REAR RIGHT
+           ========================= -->
+      <body name="leg_RR" pos="-0.075 0.038 0.0125">
+        <!-- Tilt added (already in your file) -->
+        <joint name="RR_tilt" type="hinge" axis="1 0 0"/>
+        <geom type="mesh" mesh="two_servo" material="mat_servo" euler="0 0 3.141592"/>
+        <geom type="mesh" mesh="two_servo_base" euler="0 0 3.141592" material="mat_plastic"/>
+
+        <body name="RR_base_left" pos="-0.01 0.024 -0.005">
+          <body name="RR_shoulder_left" pos="0 0 -0.005" euler="0 0 0">
+            <joint name="RR_shoulder_L" type="hinge" axis="0 1 0"/>
+            <geom type="mesh" mesh="shoulder_right_arm" material="mat_plastic"/>
+
+            <body name="RR_elbow_left" pos="0 -0.0035 -0.045">
+              <joint name="RR_elbow_L" type="hinge" axis="0 1 0"/>
+              <geom type="mesh" mesh="elbow_right_arm" material="mat_plastic"/>
+              <site  name="RR_tip_L" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <body name="RR_base_right" pos="0.01 0.024 -0.005">
+          <body name="RR_shoulder_right" pos="0 0 -0.005">
+            <joint name="RR_shoulder_R" type="hinge" axis="0 1 0"/>
+            <geom type="mesh" mesh="shoulder_right_arm" material="mat_plastic"/>
+
+            <body name="RR_elbow_right" pos="0 0.0035 -0.045">
+              <joint name="RR_elbow_R" type="hinge" axis="0 1 0"/>
+              <geom type="mesh" mesh="elbow_right_arm" material="mat_plastic"/>
+              <site  name="RR_tip_R" pos="0 0 -0.06" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+    </body> <!-- /robot -->
+  </worldbody>
+
+  <!-- Close each loop so the two distal sites coincide per leg -->
+  <equality>
+    <connect site1="FL_tip_L" site2="FL_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+    <connect site1="FR_tip_L" site2="FR_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+    <connect site1="RL_tip_L" site2="RL_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+    <connect site1="RR_tip_L" site2="RR_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+  </equality>
+
+  <!-- Actuators: shoulders, plus tilt on every leg -->
+  <actuator>
+    <!-- FL -->
+    <position name="motor_FL_shoulder_L" joint="FL_shoulder_L" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FL_shoulder_R" joint="FL_shoulder_R" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FL_tilt"       joint="FL_tilt"       kp="1" ctrlrange="-3.14159 3.14159"/>
+    
+    <!-- RL -->
+    <position name="motor_RL_shoulder_L" joint="RL_shoulder_L" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RL_shoulder_R" joint="RL_shoulder_R" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RL_tilt"       joint="RL_tilt"       kp="1" ctrlrange="-3.14159 3.14159"/>
+
+    <!-- FR -->
+    <position name="motor_FR_shoulder_L" joint="FR_shoulder_L" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FR_shoulder_R" joint="FR_shoulder_R" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FR_tilt"       joint="FR_tilt"       kp="1" ctrlrange="-3.14159 3.14159"/>
+
+    <!-- RR -->
+    <position name="motor_RR_shoulder_L" joint="RR_shoulder_L" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RR_shoulder_R" joint="RR_shoulder_R" kp="1" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RR_tilt"       joint="RR_tilt"       kp="1" ctrlrange="-3.14159 3.14159"/>
+  </actuator>
+
+  <!-- Keyframe with initial motor positions -->
+  <keyframe>
+    <key name="initial"
+         ctrl="0 0 -1.5708 0 0 -1.5708 0 0 1.5708 0 0 1.5708"/>
+  </keyframe>
+
+  <!-- End-effector readouts (tip_L == tip_R per equality) -->
+  <sensor>
+    <framepos name="FL_ee_pos" objtype="site" objname="FL_tip_L"/>
+    <framepos name="FR_ee_pos" objtype="site" objname="FR_tip_L"/>
+    <framepos name="RL_ee_pos" objtype="site" objname="RL_tip_L"/>
+    <framepos name="RR_ee_pos" objtype="site" objname="RR_tip_L"/>
+  </sensor>
+</mujoco>
+
