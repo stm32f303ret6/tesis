@@ -1,13 +1,14 @@
 include <servo.scad>
 width = 6; // width of one side in Y axis
-tilt_screw_separation = 5;// tilt servo screw distance separation
+tilt_screw_separation =27/2;// tilt servo screw distance separation
 bearing_distance = 0.1+3.5; // 0.1 lo minimo
 heigth = 8;
 m3=3.2;
-bearing_diameter=6.05;
+bearing_diameter=6.12;
+
 
 module servo_mount(){
-  tolerance = 0.1;
+  tolerance = 0.5;
   cube([40.0+tolerance, 20.0+tolerance, 41.0+tolerance], center=true);
   }
 
@@ -42,11 +43,9 @@ translate([14.5,16,-10])cylinder(d=m3,h=20,$fn=20);
 translate([14.5,-6,-10])cylinder(d=m3,h=20,$fn=20);
 translate([14.5,-16,-10])cylinder(d=m3,h=20,$fn=20);
 // tilt servo screws
-translate([-10 + tilt_screw_separation,-10,0])rotate([90,0,0])cylinder(d=m3,h=20,$fn=20);
-translate([-10 - tilt_screw_separation,-10,0])rotate([90,0,0])cylinder(d=m3,h=20,$fn=20);
+translate([-10 + tilt_screw_separation,-10,0])rotate([90,0,0])cylinder(d=1.6,h=20,$fn=20);
+translate([-10 - tilt_screw_separation,-10,0])rotate([90,0,0])cylinder(d=1.6,h=20,$fn=20);
 
-translate([-10 + tilt_screw_separation,-10,0])rotate([90,0,0])cylinder(d=m3+3,h=11.1+2,$fn=20);
-translate([-10 - tilt_screw_separation,-10,0])rotate([90,0,0])cylinder(d=m3+3,h=11.1+2,$fn=20);
 
 }
 
@@ -62,4 +61,4 @@ module two_servo_for_mujoco(){
  translate([11,-15,-10])servo_for_mujoco();
  translate([-11,-15,-10])servo_for_mujoco();
 }
-
+two_servo_base();
