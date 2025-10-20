@@ -10,6 +10,9 @@ import mujoco.viewer
 import numpy as np
 import time
 import math
+import csv
+import os
+from datetime import datetime
 from transitions import Machine
 from ik import solve_leg_ik_3dof
 
@@ -37,7 +40,7 @@ def bezier_curve(t, control_points):
 def generate_gait_trajectory(num_points=100,
                             step_height=0.03,
                             step_length=0.04,
-                            stance_height=-0.05):
+                            stance_height=0.05):
     """
     Generate a gait trajectory using bezier curves.
 
@@ -95,13 +98,13 @@ L1, L2 = 0.045, 0.06
 BASE_DIST = 0.021
 
 # Leg indices mapping
-# Motor indices: RL(0-2), RR(3-5), FL(6-8), FR(9-11)
-# Each leg: [shoulder_L, shoulder_R, tilt]
+# Follows actuator order from model/robot.xml:
+# FL(0-2), RL(3-5), FR(6-8), RR(9-11), each: [shoulder_L, shoulder_R, tilt]
 LEG_INDICES = {
-    'FL': (6, 7, 8),   # Front Left
-    'FR': (9, 10, 11), # Front Right
-    'RL': (0, 1, 2),   # Rear Left
-    'RR': (3, 4, 5)    # Rear Right
+    'FL': (0, 1, 2),   # Front Left
+    'RL': (3, 4, 5),   # Rear Left
+    'FR': (6, 7, 8),   # Front Right
+    'RR': (9, 10, 11)  # Rear Right
 }
 
 
@@ -126,13 +129,14 @@ class DiagonalGaitController:
         stance_height = abs(GAIT_PARAMS['stance_height'])
         step_height = GAIT_PARAMS['step_height']
 
-        # Check worst case: maximum horizontal + vertical reach
-        worst_case_dist = np.sqrt((step_length/2)**2 + stance_height**2)
+        # Check worst case reach at maximum swing height
+        z_max = stance_height + step_height
+        worst_case_dist = np.sqrt((step_length / 2) ** 2 + z_max ** 2)
         if worst_case_dist > max_reach * 0.95:  # 95% safety margin
-            print(f"⚠ WARNING: Gait parameters may be unreachable!")
-            print(f"  Max reach: {max_reach:.3f}m")
-            print(f"  Worst case distance: {worst_case_dist:.3f}m")
-            print(f"  Recommend: step_length < {0.04:.3f}m, stance_height > -{0.09:.3f}m")
+            print("⚠ WARNING: Gait parameters may be near or beyond reach!")
+            print(f"  Max planar reach: {max_reach:.3f} m")
+            print(f"  Using: step_length/2={step_length/2:.3f} m, z_max={z_max:.3f} m")
+            print("  Consider reducing step_length and/or step_height.")
 
         # Generate gait trajectory
         self.trajectory = generate_gait_trajectory(**GAIT_PARAMS)
@@ -178,8 +182,32 @@ class DiagonalGaitController:
             model, mujoco.mjtObj.mjOBJ_BODY, "robot"
         )
 
+        # Get sensor IDs for position sensors
+        self.sensor_ids = {
+            'FL': mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "FL_ee_pos"),
+            'FR': mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "FR_ee_pos"),
+            'RL': mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "RL_ee_pos"),
+            'RR': mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "RR_ee_pos")
+        }
+
+        # Cycle counter for CSV files
+        self.cycle_count = 0
+
+        # Create output folder with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.output_folder = f"gait_data_{timestamp}"
+        os.makedirs(self.output_folder, exist_ok=True)
+        print(f"Created output folder: {self.output_folder}")
+
+        # CSV buffer for current cycle
+        self.cycle_data = []
+
     def on_enter_pair1_swing(self):
         """Called when entering pair1_swing state (FL and RR swing)."""
+        # Save cycle data if we have collected any
+        if len(self.cycle_data) > 0:
+            self.save_cycle_csv()
+
         # Reset trajectory indices to start of swing for FL and RR
         self.leg_indices['FL'] = 0
         self.leg_indices['RR'] = 0
@@ -189,6 +217,10 @@ class DiagonalGaitController:
 
     def on_enter_pair2_swing(self):
         """Called when entering pair2_swing state (FR and RL swing)."""
+        # Save cycle data if we have collected any
+        if len(self.cycle_data) > 0:
+            self.save_cycle_csv()
+
         # Reset trajectory indices to start of swing for FR and RL
         self.leg_indices['FR'] = 0
         self.leg_indices['RL'] = 0
@@ -243,17 +275,49 @@ class DiagonalGaitController:
         tilt, ang1L, ang1R = result
         idx_L, idx_R, idx_tilt = LEG_INDICES[leg_name]
 
-        # Apply angles based on leg position (front vs rear)
-        if leg_name in ['FL', 'FR']:  # Front legs
+        # Apply angles based on side (left vs right)
+        if leg_name in ['FL', 'RL']:  # Left-side legs share axis direction
             self.data.ctrl[idx_L] = ang1L
             self.data.ctrl[idx_R] = ang1R + np.pi
-            self.data.ctrl[idx_tilt] = tilt
-        else:  # Rear legs (RL, RR)
+        else:  # Right-side legs (FR, RR) mirrored
             self.data.ctrl[idx_L] = -ang1L
             self.data.ctrl[idx_R] = -ang1R - np.pi
-            self.data.ctrl[idx_tilt] = tilt
+        # Tilt is common
+        self.data.ctrl[idx_tilt] = tilt
 
         return True
+
+    def read_sensor_positions(self):
+        """Read current positions of all leg tip sensors."""
+        positions = {}
+        for leg_name, sensor_id in self.sensor_ids.items():
+            # Each sensor returns 3 values (x, y, z)
+            adr = self.model.sensor_adr[sensor_id]
+            positions[leg_name] = self.data.sensordata[adr:adr+3].copy()
+        return positions
+
+    def save_cycle_csv(self):
+        """Save collected cycle data to CSV file."""
+        if len(self.cycle_data) == 0:
+            return
+
+        csv_filename = os.path.join(self.output_folder, f"cycle_{self.cycle_count:04d}.csv")
+
+        with open(csv_filename, 'w', newline='') as csvfile:
+            fieldnames = ['time', 'state',
+                         'FL_x', 'FL_y', 'FL_z',
+                         'FR_x', 'FR_y', 'FR_z',
+                         'RL_x', 'RL_y', 'RL_z',
+                         'RR_x', 'RR_y', 'RR_z']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+            writer.writeheader()
+            for row in self.cycle_data:
+                writer.writerow(row)
+
+        print(f"Saved {len(self.cycle_data)} data points to {csv_filename}")
+        self.cycle_count += 1
+        self.cycle_data = []
 
     def update(self):
         """Update all leg positions and advance trajectory indices."""
@@ -261,6 +325,26 @@ class DiagonalGaitController:
         for leg_name in ['FL', 'FR', 'RL', 'RR']:
             target = self.get_leg_target(leg_name)
             self.set_leg_position(leg_name, target)
+
+        # Read sensor positions and add to cycle data
+        positions = self.read_sensor_positions()
+        row_data = {
+            'time': self.data.time,
+            'state': self.state,
+            'FL_x': positions['FL'][0],
+            'FL_y': positions['FL'][1],
+            'FL_z': positions['FL'][2],
+            'FR_x': positions['FR'][0],
+            'FR_y': positions['FR'][1],
+            'FR_z': positions['FR'][2],
+            'RL_x': positions['RL'][0],
+            'RL_y': positions['RL'][1],
+            'RL_z': positions['RL'][2],
+            'RR_x': positions['RR'][0],
+            'RR_y': positions['RR'][1],
+            'RR_z': positions['RR'][2]
+        }
+        self.cycle_data.append(row_data)
 
         # Increment trajectory indices
         for leg_name in ['FL', 'FR', 'RL', 'RR']:
@@ -285,6 +369,12 @@ def main():
     # Load model
     model = mujoco.MjModel.from_xml_path("model/world.xml")
     data = mujoco.MjData(model)
+
+    # Start from the model's keyframe for a stable initial pose
+    try:
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+    except Exception:
+        pass
 
     # Create gait controller
     controller = DiagonalGaitController(model, data)
