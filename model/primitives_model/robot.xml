@@ -1,0 +1,234 @@
+<mujoco model="four_fivebar_planar_xz">
+  <option gravity="0 0 -9.81" timestep="0.001" integrator="implicitfast"/>
+
+  <default>
+    <joint damping="0.02" armature="0.0002" limited="false"/>
+    <geom  contype="1" conaffinity="1" friction="0.6 0.1 0.1"/>
+  </default>
+
+  <asset>
+    <material name="mat_left_arm"  rgba="0.6 0.0 0.0 1"/>
+    <material name="mat_right_arm" rgba="0.0 0.6 0.0 1"/>
+    <material name="mat_tilt" rgba="0.2 0.2 0.2 1"/>
+  </asset>
+
+  <worldbody>
+
+    <body name="robot" pos="0 0 0.11">
+      <joint type="free" />
+      <geom  name="base_footprint" type="box" size="0.02 0.02 0.01" material="mat_left_arm"/>
+
+      <!-- =========================
+           FRONT LEFT
+           ========================= -->
+      <body name="leg_FL" pos="0.05 -0.03 0">
+        <!-- Tilt added (already in your file) -->
+        <joint name="FL_tilt" type="hinge" axis="1 0 0"/>
+        <geom  name="FL_tilt_link" type="box" size="0.02 0.01 0.01" material="mat_tilt"/>
+
+        <!-- Left base -->
+        <body name="FL_base_left" pos="-0.01 -0.0125 0">
+          <body name="FL_shoulder_left" pos="0 0 -0.005">
+            <joint name="FL_shoulder_L" type="hinge" axis="0 -1 0"/>
+            <geom  name="FL_upper_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_left_arm"/>
+
+            <body name="FL_elbow_left" pos="0 0 -0.03">
+              <joint name="FL_elbow_L" type="hinge" axis="0 -1 0"/>
+              <geom  name="FL_forearm_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_left_arm"/>
+              <site  name="FL_tip_L" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <!-- Right base -->
+        <body name="FL_base_right" pos="0.01 -0.0125 0">
+          <body name="FL_shoulder_right" pos="0 0 -0.005">
+            <joint name="FL_shoulder_R" type="hinge" axis="0 -1 0"/>
+            <geom  name="FL_upper_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_right_arm"/>
+
+            <body name="FL_elbow_right" pos="0 0 -0.03">
+              <joint name="FL_elbow_R" type="hinge" axis="0 -1 0"/>
+              <geom  name="FL_forearm_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_right_arm"/>
+              <site  name="FL_tip_R" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- =========================
+           FRONT RIGHT
+           ========================= -->
+      <body name="leg_FR" pos="0.05 0.03 0">
+        <!-- Tilt added -->
+        <joint name="FR_tilt" type="hinge" axis="1 0 0"/>
+        <geom  name="FR_tilt_link" type="box" size="0.02 0.01 0.01" material="mat_tilt"/>
+
+        <body name="FR_base_left" pos="-0.01 0.0125 0">
+          <body name="FR_shoulder_left" pos="0 0 -0.005">
+            <joint name="FR_shoulder_L" type="hinge" axis="0 1 0"/>
+            <geom  name="FR_upper_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_left_arm"/>
+
+            <body name="FR_elbow_left" pos="0 0 -0.03">
+              <joint name="FR_elbow_L" type="hinge" axis="0 1 0"/>
+              <geom  name="FR_forearm_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_left_arm"/>
+              <site  name="FR_tip_L" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <body name="FR_base_right" pos="0.01 0.0125 0">
+          <body name="FR_shoulder_right" pos="0 0 -0.005">
+            <joint name="FR_shoulder_R" type="hinge" axis="0 1 0"/>
+            <geom  name="FR_upper_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_right_arm"/>
+
+            <body name="FR_elbow_right" pos="0 0 -0.03">
+              <joint name="FR_elbow_R" type="hinge" axis="0 1 0"/>
+              <geom  name="FR_forearm_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_right_arm"/>
+              <site  name="FR_tip_R" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- =========================
+           REAR LEFT
+           ========================= -->
+      <body name="leg_RL" pos="-0.05 -0.03 0">
+        <!-- Tilt added -->
+        <joint name="RL_tilt" type="hinge" axis="1 0 0"/>
+        <geom  name="RL_tilt_link" type="box" size="0.02 0.01 0.01" material="mat_tilt"/>
+
+        <body name="RL_base_left" pos="-0.01 -0.0125 0">
+          <body name="RL_shoulder_left" pos="0 0 -0.005">
+            <joint name="RL_shoulder_L" type="hinge" axis="0 -1 0"/>
+            <geom  name="RL_upper_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_left_arm"/>
+
+            <body name="RL_elbow_left" pos="0 0 -0.03">
+              <joint name="RL_elbow_L" type="hinge" axis="0 -1 0"/>
+              <geom  name="RL_forearm_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_left_arm"/>
+              <site  name="RL_tip_L" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <body name="RL_base_right" pos="0.01 -0.0125 0">
+          <body name="RL_shoulder_right" pos="0 0 -0.005">
+            <joint name="RL_shoulder_R" type="hinge" axis="0 -1 0"/>
+            <geom  name="RL_upper_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_right_arm"/>
+
+            <body name="RL_elbow_right" pos="0 0 -0.03">
+              <joint name="RL_elbow_R" type="hinge" axis="0 -1 0"/>
+              <geom  name="RL_forearm_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_right_arm"/>
+              <site  name="RL_tip_R" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- =========================
+           REAR RIGHT
+           ========================= -->
+      <body name="leg_RR" pos="-0.05 0.03 0">
+        <!-- Tilt added -->
+        <joint name="RR_tilt" type="hinge" axis="1 0 0"/>
+        <geom  name="RR_tilt_link" type="box" size="0.02 0.01 0.01" material="mat_tilt"/>
+
+        <body name="RR_base_left" pos="-0.01 0.0125 0">
+          <body name="RR_shoulder_left" pos="0 0 -0.005">
+            <joint name="RR_shoulder_L" type="hinge" axis="0 1 0"/>
+            <geom  name="RR_upper_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_left_arm"/>
+
+            <body name="RR_elbow_left" pos="0 0 -0.03">
+              <joint name="RR_elbow_L" type="hinge" axis="0 1 0"/>
+              <geom  name="RR_forearm_L" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_left_arm"/>
+              <site  name="RR_tip_L" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+
+        <body name="RR_base_right" pos="0.01 0.0125 0">
+          <body name="RR_shoulder_right" pos="0 0 -0.005">
+            <joint name="RR_shoulder_R" type="hinge" axis="0 1 0"/>
+            <geom  name="RR_upper_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.03" material="mat_right_arm"/>
+
+            <body name="RR_elbow_right" pos="0 0 -0.03">
+              <joint name="RR_elbow_R" type="hinge" axis="0 1 0"/>
+              <geom  name="RR_forearm_R" type="capsule" size="0.003" fromto="0 0 0  0 0 -0.05" material="mat_right_arm"/>
+              <site  name="RR_tip_R" pos="0 0 -0.05" size="0.001"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+    </body> <!-- /robot -->
+  </worldbody>
+
+  <!-- Close each loop so the two distal sites coincide per leg -->
+  <equality>
+    <connect site1="FL_tip_L" site2="FL_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+    <connect site1="FR_tip_L" site2="FR_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+    <connect site1="RL_tip_L" site2="RL_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+    <connect site1="RR_tip_L" site2="RR_tip_R" solref="0.002 1" solimp="0.95 0.99 0.001"/>
+  </equality>
+
+  <!-- Actuators: shoulders, plus tilt on every leg -->
+  <actuator>
+    <!-- FL -->
+    <position name="motor_FL_shoulder_L" joint="FL_shoulder_L" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FL_shoulder_R" joint="FL_shoulder_R" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FL_tilt"       joint="FL_tilt"       kp="10" ctrlrange="-3.14159 3.14159"/>
+
+    <!-- RL -->
+    <position name="motor_RL_shoulder_L" joint="RL_shoulder_L" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RL_shoulder_R" joint="RL_shoulder_R" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RL_tilt"       joint="RL_tilt"       kp="10" ctrlrange="-3.14159 3.14159"/>
+
+    <!-- FR -->
+    <position name="motor_FR_shoulder_L" joint="FR_shoulder_L" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FR_shoulder_R" joint="FR_shoulder_R" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_FR_tilt"       joint="FR_tilt"       kp="10" ctrlrange="-3.14159 3.14159"/>
+
+    <!-- RR -->
+    <position name="motor_RR_shoulder_L" joint="RR_shoulder_L" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RR_shoulder_R" joint="RR_shoulder_R" kp="10" ctrlrange="-3.14159 3.14159"/>
+    <position name="motor_RR_tilt"       joint="RR_tilt"       kp="10" ctrlrange="-3.14159 3.14159"/>
+  </actuator>
+
+  <!-- End-effector readouts (tip_L == tip_R per equality) -->
+  <sensor>
+    <framepos name="FL_ee_pos" objtype="site" objname="FL_tip_L"/>
+    <framepos name="FR_ee_pos" objtype="site" objname="FR_tip_L"/>
+    <framepos name="RL_ee_pos" objtype="site" objname="RL_tip_L"/>
+    <framepos name="RR_ee_pos" objtype="site" objname="RR_tip_L"/>
+
+    <!-- Joint position sensors for debugging IK -->
+    <!-- FL -->
+    <jointpos name="FL_shoulder_L_pos" joint="FL_shoulder_L"/>
+    <jointpos name="FL_shoulder_R_pos" joint="FL_shoulder_R"/>
+    <jointpos name="FL_elbow_L_pos" joint="FL_elbow_L"/>
+    <jointpos name="FL_elbow_R_pos" joint="FL_elbow_R"/>
+    <jointpos name="FL_tilt_pos" joint="FL_tilt"/>
+
+    <!-- FR -->
+    <jointpos name="FR_shoulder_L_pos" joint="FR_shoulder_L"/>
+    <jointpos name="FR_shoulder_R_pos" joint="FR_shoulder_R"/>
+    <jointpos name="FR_elbow_L_pos" joint="FR_elbow_L"/>
+    <jointpos name="FR_elbow_R_pos" joint="FR_elbow_R"/>
+    <jointpos name="FR_tilt_pos" joint="FR_tilt"/>
+
+    <!-- RL -->
+    <jointpos name="RL_shoulder_L_pos" joint="RL_shoulder_L"/>
+    <jointpos name="RL_shoulder_R_pos" joint="RL_shoulder_R"/>
+    <jointpos name="RL_elbow_L_pos" joint="RL_elbow_L"/>
+    <jointpos name="RL_elbow_R_pos" joint="RL_elbow_R"/>
+    <jointpos name="RL_tilt_pos" joint="RL_tilt"/>
+
+    <!-- RR -->
+    <jointpos name="RR_shoulder_L_pos" joint="RR_shoulder_L"/>
+    <jointpos name="RR_shoulder_R_pos" joint="RR_shoulder_R"/>
+    <jointpos name="RR_elbow_L_pos" joint="RR_elbow_L"/>
+    <jointpos name="RR_elbow_R_pos" joint="RR_elbow_R"/>
+    <jointpos name="RR_tilt_pos" joint="RR_tilt"/>
+  </sensor>
+</mujoco>
+
