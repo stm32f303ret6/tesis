@@ -6,7 +6,7 @@ import time
 import math
 from ik import solve_leg_ik_3dof
 
-model = mujoco.MjModel.from_xml_path("model/world.xml")
+model = mujoco.MjModel.from_xml_path("model/world_static_test.xml")
 data = mujoco.MjData(model)
 ik_mode = 2
 
