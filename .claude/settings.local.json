@@ -6,7 +6,13 @@
       "Bash(chmod:*)",
       "Bash(pip install:*)",
       "Bash(MUJOCO_GL=egl timeout 5 python3 diagonal_gait.py)",
-      "Read(//home/rsc/.ssh/**)"
+      "Read(//home/rsc/.ssh/**)",
+      "Bash(MUJOCO_GL=egl timeout 5 python3:*)",
+      "Bash(cat:*)",
+      "Bash(pip3 list:*)",
+      "WebSearch",
+      "Bash(find:*)",
+      "Bash(MUJOCO_GL=egl timeout 10 python3:*)"
     ],
     "deny": [],
     "ask": []

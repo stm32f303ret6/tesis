@@ -4,171 +4,100 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a quadruped robot simulation using MuJoCo physics engine. The robot has 4 legs, each using a parallel SCARA (Selective Compliance Assembly Robot Arm) mechanism with 3 degrees of freedom: tilt + two shoulder joints. The project includes inverse kinematics solvers and demonstration scripts.
+This is a quadruped robot simulation project using MuJoCo physics engine. The robot features a novel 3DOF parallel SCARA leg design with tilt control, allowing independent control of leg height, lateral position, and tilt angle.
 
-## Environment Setup
+## Core Architecture
 
-```bash
-# Create and activate virtual environment
-python3 -m venv .venv && source .venv/bin/activate
+### Inverse Kinematics System (`ik.py`)
+The IK module provides the mathematical foundation for leg control:
+- `solve_2link_ik()`: Basic 2-link planar IK solver using law of cosines
+- `parallel_scara_ik()`: 2DOF parallel SCARA mechanism with 4 working modes (different elbow configurations)
+- `parallel_scara_ik_3dof()`: Full 3DOF IK including tilt control for 3D target positions
+- `solve_leg_ik_3dof()`: Convenience wrapper with robot-specific default parameters
 
-# Install dependencies
-pip install -U mujoco numpy
+**Key parameters:**
+- `L1 = 0.045` m (upper link length)
+- `L2 = 0.06` m (lower link length)
+- `base_dist = 0.021` m (distance between parallel arms)
+- `mode`: 1=A up/B down, 2=A down/B up (default), 3=both up, 4=both down
 
-# Optional development tools
-pip install black ruff mypy pytest
+The 3DOF IK transforms 3D targets (x, y, z) into joint angles (tilt, shoulder_L, shoulder_R) by:
+1. Computing or accepting a tilt angle to handle y-displacement
+2. Projecting the target into the tilted leg's planar frame
+3. Solving the 2DOF SCARA IK in that plane
 
-# For gait visualization (test scripts)
-pip install matplotlib pillow
-```
+### Simulation Control (`height_control.py`)
+The main demo script orchestrating MuJoCo simulation:
+- Loads robot model from `model/world.xml`
+- `set_leg_height(x, y, z)`: Sets all four legs to target position using 3DOF IK
+- Implements sinusoidal height oscillation with optional lateral motion
+- Camera follows robot body during simulation
+- **Control mapping:** Front legs use indices 6-11, rear legs 0-5; rear shoulders are mirrored (negated)
 
-**Graphics requirement**: MuJoCo viewer requires OpenGL. For headless servers, set `export MUJOCO_GL=egl` before running.
+### MuJoCo Model Structure
+- `model/world.xml`: Top-level scene with ground plane, lighting, and includes `robot.xml`
+- `model/robot.xml`: Complete robot definition with 4 legs, each having:
+  - Tilt joint (1 DOF, axis=[1,0,0])
+  - Two shoulder joints (parallel SCARA, axis=[0,-1,0])
+  - Two elbow joints (passive/constrained)
+- `model/assets/`: STL mesh files for all robot parts
+- `model/openscad/`: Editable CAD sources (`.scad`) and generated `.stl` files
 
-## Running Demos
-
-**IMPORTANT**: Always run scripts from the repository root so relative paths (`model/world.xml`) resolve correctly.
-
-```bash
-# Basic height control with sinusoidal motion
-python3 height_control.py
-
-# Smooth startup with eased tilt transition followed by height control
-python3 smooth_startup.py
-
-# Test IK solvers directly
-python3 ik.py
-```
+**Important:** Joint names and body names in XML must stay stable to avoid breaking control code that references them by name.
 
 ## Development Commands
 
+### Environment Setup
 ```bash
-# Format code
-black .
-
-# Lint
-ruff .
-
-# Type check
-mypy ik.py
-
-# Run tests
-python -m pytest test/ -v
-
-# Run specific visualization tests
-python3 test/test_bezier_gait.py
-python3 test/explain_bezier_params.py
+python3 -m venv .venv && source .venv/bin/activate
+pip install mujoco numpy
 ```
 
-## Architecture
+### Running Simulations
+```bash
+# Main height control demo (interactive viewer)
+python3 height_control.py
 
-### Core IK Module (`ik.py`)
+# Headless mode (for CI/testing)
+MUJOCO_GL=egl python3 height_control.py
 
-Contains all inverse kinematics solvers - keep this pure math with no I/O:
+# IK verification tests
+python3 ik.py
+```
 
-- `solve_2link_ik()`: Basic 2-link planar arm IK with elbow-up/down configuration
-- `parallel_scara_ik()`: 2DOF parallel SCARA solver with 4 working modes:
-  - Mode 1: Arm A elbow up, B down
-  - Mode 2: Arm A elbow down, B up (default)
-  - Mode 3: Both elbows up
-  - Mode 4: Both elbows down
-- `parallel_scara_ik_3dof()`: 3DOF version adding tilt control for lateral displacement
-- `solve_leg_ik_3dof()`: Convenience wrapper for robot-specific leg IK
-
-**Default leg parameters**:
-- L1 (upper link): 0.045m (45mm)
-- L2 (lower link): 0.06m (60mm)
-- base_dist (parallel arm spacing): 0.021m (21mm)
-
-### Demo Scripts
-
-- `height_control.py`: Continuous sinusoidal height + lateral motion using 3DOF IK
-- `smooth_startup.py`: Two-phase demo:
-  1. 5-second camera setup delay
-  2. Cubic-eased tilt transition to 0° over 2 seconds
-  3. Transitions to height control movements
-
-Both demos track the robot body with the camera automatically.
-
-### Motor Control Indexing
-
-The robot has 12 motors (4 legs × 3 DOF):
-- Each leg: `[shoulder_L, shoulder_R, tilt]`
-- Indices: RL(0-2), RL(3-5), FL(6-8), FR(9-11)
-- Tilt motors specifically: `[2, 5, 8, 11]`
-
-**Leg symmetry**: Front and rear legs use mirrored angles:
-- Front legs: `ang1L`, `ang1R + π`, `tilt`
-- Rear legs: `-ang1L`, `-ang1R - π`, `tilt`
-
-### MuJoCo Models
-
-- `model/world.xml`: Top-level scene with lighting, ground plane, includes robot.xml
-- `model/robot.xml`: Robot definition with 4 parallel SCARA legs, each with tilt joint + dual shoulder mechanism
-- `model/assets/*.stl`: 3D meshes for visualization
-- `model/openscad/*.scad`: Source CAD files for generating STL meshes
+### Asset Pipeline
+When modifying robot geometry:
+1. Edit `.scad` files in `model/openscad/`
+2. Regenerate STL: `openscad -o model/assets/<part>.stl model/openscad/<part>.scad`
+3. Verify mesh orientation and scale in MuJoCo before committing
+4. Update link lengths in code if dimensions changed
 
 ## Coding Conventions
 
-- Python 3, PEP 8, 4-space indentation
-- snake_case for modules, functions, variables
-- UPPER_CASE for constants
-- Type hints for public functions in `ik.py`
-- Keep IK functions pure (no I/O, no side effects)
-- Keep viewer/demo logic in scripts, math/IK in `ik.py`
+### Python Style
+- Follow PEP 8: 4-space indentation, line length ≤ 100
+- Module constants in UPPER_SNAKE_CASE, functions/variables in snake_case
+- Group imports: standard library, third-party (numpy, mujoco), local modules
+- Keep docstrings focused on coordinate frames and units (meters, radians)
 
-## Testing
+### Testing Approach
+- `ik.py` contains built-in verification when run as main script
+- For new features, add pytest-compatible tests in `tests/test_*.py`
+- Before committing kinematic changes, visually verify with `python3 height_control.py`
+- Check console for MuJoCo warnings about joint limits or contacts
 
-- Framework: pytest
-- Place tests in `test/` directory (note: currently `test/` not `tests/`) with `test_*.py` naming
-- Focus on numeric assertions: reachability checks, angle ranges, forward kinematics validation
-- Target >80% coverage of core IK logic
+## Common Pitfalls
 
-### Running Tests
+1. **Coordinate frame confusion**: The IK operates in leg-local frame where Z points down (gravity direction). Target positions should be negative Z for downward reach.
 
-```bash
-# Run all tests
-python -m pytest test/ -v
+2. **Control index mapping**: Front legs (FL, FR) use ctrl indices 6-11, rear legs (RL, RR) use 0-5. Each leg has 3 actuators: left shoulder, right shoulder (+π offset), tilt.
 
-# Run specific test file
-python3 test/test_bezier_gait.py
+3. **Rear leg mirroring**: Rear shoulder angles must be negated to maintain symmetric gait.
 
-# Generate gait visualization (creates gait_trajectory_static.png and gait_animation.gif)
-python3 test/explain_bezier_params.py
-```
+4. **Asset regeneration**: When updating SCAD files, remember to regenerate STL and copy to `model/assets/` before testing.
 
-### Test Coverage
-
-- `test_bezier_gait.py`: Bezier gait trajectory generation, FK/IK consistency verification, and animation
-  - Includes forward kinematics (2DOF and 3DOF) for verification
-  - Generates visualizations of gait cycles
-  - Validates that FK(IK(target)) ≈ target
-- `explain_bezier_params.py`: Parameter visualization tool for understanding gait parameters
+5. **Reachability limits**: Max reach = L1 + L2 = 0.105m. Current code uses 15-90% of max reach as safe working range.
 
 ## Commit Style
 
-Use Conventional Commits:
-- `feat:` - New features
-- `fix:` - Bug fixes
-- `docs:` - Documentation changes
-- `refactor:` - Code restructuring
-- `test:` - Test additions/changes
-- `chore:` - Maintenance tasks
-
-## Important Notes
-
-- Do not break relative paths to `model/*` - many scripts depend on running from repo root
-- When changing IK defaults, update usage examples in `ik.py` and verify demos still run
-- Keep STL/SCAD file paths stable; avoid committing large binaries beyond existing assets
-- The robot body has a free joint (6DOF floating base) - it can move in simulation
-
-## Gait Development
-
-The project includes Bezier-based gait trajectory tools in `test/`:
-- **Gait parameters**: `step_length` (stride), `step_height` (clearance), `stance_height` (body height)
-- **Safe ranges** (from `test/bezier_params_explanation.txt`):
-  - stance_height: -0.04 to -0.09m (-40mm to -90mm)
-  - step_length: 0.02 to 0.06m (20mm to 60mm)
-  - step_height: 0.01 to 0.05m (10mm to 50mm)
-- **Gait cycle**: 50% swing phase (Bezier curve), 50% stance phase (linear motion)
-- **Forward kinematics**: Available in `test/test_bezier_gait.py` for FK/IK verification (validates <5mm error)
-- Generate visualizations with `python3 test/explain_bezier_params.py`
+Match repository history with brief, present-tense subjects (e.g., "adding primitives model", "changing diagonal_gait"). Reference issues or design docs in body when relevant. Note MuJoCo version or asset changes in commit messages.

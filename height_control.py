@@ -1,77 +1,90 @@
 #!/usr/bin/env python3
+import time
+from dataclasses import dataclass
+from typing import Dict, Tuple
+
 import mujoco
 import mujoco.viewer
 import numpy as np
-import time
-import math
+
+from gait_controller import DiagonalGaitController, GaitParameters
 from ik import solve_leg_ik_3dof
 
-model = mujoco.MjModel.from_xml_path("model/world_static_test.xml")
+IK_PARAMS = dict(L1=0.045, L2=0.06, base_dist=0.021, mode=2)
+
+
+@dataclass(frozen=True)
+class LegControl:
+    indices: Tuple[int, int, int]
+    sign: float
+    offset: float
+
+
+LEG_CONTROL: Dict[str, LegControl] = {
+    "FL": LegControl(indices=(0, 1, 2), sign=-1.0, offset=-np.pi),
+    "FR": LegControl(indices=(6, 7, 8), sign=1.0, offset=np.pi),
+    "RL": LegControl(indices=(3, 4, 5), sign=-1.0, offset=-np.pi),
+    "RR": LegControl(indices=(9, 10, 11), sign=1.0, offset=np.pi),
+}
+
+GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.06, step_height=0.04, cycle_time=0.8)
+
+model = mujoco.MjModel.from_xml_path("model/world.xml")
 data = mujoco.MjData(model)
-ik_mode = 2
-
-def set_leg_height(height, lateral_offset=0.0):
-    """Set leg height with optional lateral (sideways) offset for 3DOF control."""
-    # Target position in leg frame [x, y, z]
-    target_3d = np.array([0.0, lateral_offset, height])
-    
-    res = solve_leg_ik_3dof(target_3d, 
-                           L1=0.045, 
-                           L2=0.06, 
-                           base_dist=0.021, 
-                           mode=ik_mode)
-    if not res:
-        print(f"3DOF IK failed at height={height}, lateral={lateral_offset}")
-        return False
-    
-    tilt, ang1L, ang1R = res
-    
-    # Set front legs (FL, FR) - indices 6-11
-    for i in range(6, 12, 3):
-        data.ctrl[i]   = ang1L         # Left shoulder
-        data.ctrl[i+1] = ang1R + np.pi # Right shoulder (offset by π)
-        data.ctrl[i+2] = tilt          # Tilt joint
-
-    # Set rear legs (RL, RR) - indices 0-5
-    for i in range(0, 6, 3):
-        data.ctrl[i]   = -ang1L        # Left shoulder (mirrored)
-        data.ctrl[i+1] = -ang1R - np.pi # Right shoulder (mirrored and offset)
-        data.ctrl[i+2] = tilt          # Tilt joint
-    
-    return True
-
-# Calculate height limits based on config parameters
-L1, L2 = 0.045, 0.06
-max_reach = L1 + L2
-min_height = max_reach * 0.15  # 25% of max reach as minimum
-max_height = max_reach * 0.9   # 90% of max reach as maximum
-height_range = max_height - min_height
-period = 3.0  # Period in seconds
-
-# Get robot body ID for camera tracking
 robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
 
-# Launch the viewer
-with mujoco.viewer.launch_passive(model, data) as viewer:
-    start_time = time.time()
-    
-    while viewer.is_running():
-        current_time = time.time() - start_time
-        
-        # Sinusoidal height variation
-        height_factor = 0.3 * (1 + math.sin(2 * math.pi * current_time / period))
-        target_height = min_height + height_range * height_factor
-        
-        # Optional: add lateral oscillation to demonstrate 3DOF capability
-        lateral_factor = 0.015 * math.sin(4 * math.pi * current_time / period)  # 5mm amplitude, 2x frequency
-        
-        # Use 3DOF IK with optional lateral motion
-        set_leg_height(target_height, lateral_factor)
-        mujoco.mj_step(model, data)
-        
-        # Update camera to follow robot
-        robot_pos = data.xpos[robot_body_id]
-        viewer.cam.lookat[:] = robot_pos
-        viewer.sync()
 
-print("Demo finished")
+def apply_leg_angles(ctrl: mujoco.MjData, leg: str, angles: Tuple[float, float, float]) -> None:
+    """Map IK output angles into the actuator ordering."""
+    tilt, ang_left, ang_right = angles
+    config = LEG_CONTROL[leg]
+    idx_left, idx_right, idx_tilt = config.indices
+    sign = config.sign
+    offset = config.offset
+
+    ctrl.ctrl[idx_left] = sign * ang_left
+    ctrl.ctrl[idx_right] = sign * ang_right + offset
+    ctrl.ctrl[idx_tilt] = tilt
+
+
+def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> None:
+    """Evaluate the gait planner and push the resulting joint targets to MuJoCo."""
+    leg_targets = controller.update(timestep)
+
+    for leg in LEG_CONTROL:
+        target = leg_targets.get(leg)
+        if target is None:
+            continue
+
+        result = solve_leg_ik_3dof(target, **IK_PARAMS)
+        if result is None:
+            print(f"[WARN] IK failed for leg {leg} with target {target}")
+            continue
+
+        apply_leg_angles(data, leg, result)
+
+
+def main() -> None:
+    controller = DiagonalGaitController(GAIT_PARAMS)
+    controller.reset()
+
+    with mujoco.viewer.launch_passive(model, data) as viewer:
+        while viewer.is_running():
+            step_start = time.time()
+
+            apply_gait_targets(controller, model.opt.timestep)
+            mujoco.mj_step(model, data)
+
+            robot_pos = data.xpos[robot_body_id]
+            viewer.cam.lookat[:] = robot_pos
+            viewer.sync()
+
+            time_until_next = model.opt.timestep - (time.time() - step_start)
+            if time_until_next > 0:
+                time.sleep(time_until_next)
+
+    print("Demo finished")
+
+
+if __name__ == "__main__":
+    main()
