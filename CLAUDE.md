@@ -26,13 +26,26 @@ The 3DOF IK transforms 3D targets (x, y, z) into joint angles (tilt, shoulder_L,
 2. Projecting the target into the tilted leg's planar frame
 3. Solving the 2DOF SCARA IK in that plane
 
+### Gait Controller (`gait_controller.py`)
+The locomotion planning module implementing diagonal trot gait:
+- `DiagonalGaitController`: Finite-state machine for diagonal pair coordination using `transitions` library
+- Two states: `pair_a_swing` (FL+RR swing) and `pair_b_swing` (FR+RL swing)
+- Swing trajectories use cubic Bézier curves via `bezier` library for smooth foot motion
+- Stance phase: linear sweep from front to back proportional to step length
+- `GaitParameters`: Configurable gait settings (body_height, step_length, step_height, cycle_time, lateral_offsets)
+- Returns per-leg 3D target positions `[x, y, z]` in leg-local frame
+
 ### Simulation Control (`height_control.py`)
-The main demo script orchestrating MuJoCo simulation:
+The main integration script orchestrating MuJoCo simulation with gait control:
 - Loads robot model from `model/world.xml`
-- `set_leg_height(x, y, z)`: Sets all four legs to target position using 3DOF IK
-- Implements sinusoidal height oscillation with optional lateral motion
+- `apply_leg_angles()`: Maps IK output (tilt, shoulder_L, shoulder_R) to actuator control indices
+- `apply_gait_targets()`: Queries gait controller, solves IK for each leg, applies to MuJoCo
 - Camera follows robot body during simulation
-- **Control mapping:** Front legs use indices 6-11, rear legs 0-5; rear shoulders are mirrored (negated)
+- **Control mapping:** Each leg has 3 actuators at specific indices defined in `LEG_CONTROL` dict:
+  - FL: indices (0,1,2), sign=-1, offset=-π
+  - FR: indices (6,7,8), sign=1, offset=π
+  - RL: indices (3,4,5), sign=-1, offset=-π
+  - RR: indices (9,10,11), sign=1, offset=π
 
 ### MuJoCo Model Structure
 - `model/world.xml`: Top-level scene with ground plane, lighting, and includes `robot.xml`
@@ -50,19 +63,22 @@ The main demo script orchestrating MuJoCo simulation:
 ### Environment Setup
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install mujoco numpy
+pip install -r requirements.txt
 ```
 
 ### Running Simulations
 ```bash
-# Main height control demo (interactive viewer)
+# Main gait controller demo (interactive viewer with trot gait)
 python3 height_control.py
 
 # Headless mode (for CI/testing)
-MUJOCO_GL=egl python3 height_control.py
+MUJOCO_GL=egl timeout 10 python3 height_control.py
 
-# IK verification tests
+# IK verification tests (standalone verification with test cases)
 python3 ik.py
+
+# Run unit tests
+python3 -m pytest tests/
 ```
 
 ### Asset Pipeline
@@ -81,22 +97,28 @@ When modifying robot geometry:
 - Keep docstrings focused on coordinate frames and units (meters, radians)
 
 ### Testing Approach
-- `ik.py` contains built-in verification when run as main script
-- For new features, add pytest-compatible tests in `tests/test_*.py`
-- Before committing kinematic changes, visually verify with `python3 height_control.py`
+- `ik.py` contains built-in verification when run as main script (2DOF, 3DOF, height control tests)
+- Unit tests in `tests/` use pytest (e.g., `test_gait_controller.py` verifies state transitions)
+- Before committing kinematic/gait changes, visually verify with `python3 height_control.py`
 - Check console for MuJoCo warnings about joint limits or contacts
+- Headless validation: Use `MUJOCO_GL=egl timeout 10 python3 height_control.py` to verify no crashes
 
 ## Common Pitfalls
 
-1. **Coordinate frame confusion**: The IK operates in leg-local frame where Z points down (gravity direction). Target positions should be negative Z for downward reach.
+1. **Coordinate frame confusion**: The IK operates in leg-local frame where Z points down (gravity direction). Target positions should be negative Z for downward reach. Gait controller outputs are in this same frame.
 
-2. **Control index mapping**: Front legs (FL, FR) use ctrl indices 6-11, rear legs (RL, RR) use 0-5. Each leg has 3 actuators: left shoulder, right shoulder (+π offset), tilt.
+2. **Control index mapping**: The `LEG_CONTROL` dict in `height_control.py` defines the exact mapping:
+   - Each leg has 3 control indices: (left_shoulder, right_shoulder, tilt)
+   - Front legs use different indices than rear legs
+   - Sign and offset are applied per-leg to ensure symmetric motion
 
-3. **Rear leg mirroring**: Rear shoulder angles must be negated to maintain symmetric gait.
+3. **Actuator sign conventions**: Left shoulders and tilts use raw angles, but right shoulders add an offset (±π) due to mechanical mirroring. The `apply_leg_angles()` function handles this automatically.
 
-4. **Asset regeneration**: When updating SCAD files, remember to regenerate STL and copy to `model/assets/` before testing.
+4. **Gait state timing**: `DiagonalGaitController.update()` expects real timestep `dt` in seconds. Using wrong timestep will desynchronize swing/stance phases.
 
-5. **Reachability limits**: Max reach = L1 + L2 = 0.105m. Current code uses 15-90% of max reach as safe working range.
+5. **Asset regeneration**: When updating SCAD files, remember to regenerate STL and copy to `model/assets/` before testing.
+
+6. **Reachability limits**: Max reach = L1 + L2 = 0.105m. Gait parameters should keep step_length and body_height within safe IK workspace to avoid None returns from `solve_leg_ik_3dof()`.
 
 ## Commit Style
 

@@ -9,6 +9,7 @@ import numpy as np
 
 from gait_controller import DiagonalGaitController, GaitParameters
 from ik import solve_leg_ik_3dof
+from joystick_input import JoystickInput, VelocityCommand
 
 IK_PARAMS = dict(L1=0.045, L2=0.06, base_dist=0.021, mode=2)
 
@@ -27,7 +28,7 @@ LEG_CONTROL: Dict[str, LegControl] = {
     "RR": LegControl(indices=(9, 10, 11), sign=1.0, offset=np.pi),
 }
 
-GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.06, step_height=0.04, cycle_time=0.8)
+GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.06, step_height=0.04, cycle_time=0.4)
 
 model = mujoco.MjModel.from_xml_path("model/world.xml")
 data = mujoco.MjData(model)
@@ -47,9 +48,11 @@ def apply_leg_angles(ctrl: mujoco.MjData, leg: str, angles: Tuple[float, float, 
     ctrl.ctrl[idx_tilt] = tilt
 
 
-def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> None:
+def apply_gait_targets(
+    controller: DiagonalGaitController, timestep: float, velocity: VelocityCommand
+) -> None:
     """Evaluate the gait planner and push the resulting joint targets to MuJoCo."""
-    leg_targets = controller.update(timestep)
+    leg_targets = controller.update(timestep, velocity)
 
     for leg in LEG_CONTROL:
         target = leg_targets.get(leg)
@@ -65,25 +68,52 @@ def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> N
 
 
 def main() -> None:
-    controller = DiagonalGaitController(GAIT_PARAMS)
+    # Initialize gait controller
+    controller = DiagonalGaitController(GAIT_PARAMS, robot_width=0.1)
     controller.reset()
 
-    with mujoco.viewer.launch_passive(model, data) as viewer:
-        while viewer.is_running():
-            step_start = time.time()
+    # Initialize joystick input
+    joystick = JoystickInput(max_linear_vel=0.15, max_angular_vel=2.0)
+    print("\n=== Quadruped Joystick Control ===")
+    print("Controls:")
+    print("  Joystick: Left stick = move, Right stick X = rotate")
+    print("  Keyboard: WASD = move, Q/E = rotate")
+    print("=" * 40 + "\n")
 
-            apply_gait_targets(controller, model.opt.timestep)
-            mujoco.mj_step(model, data)
+    last_cmd_print = time.time()
 
-            robot_pos = data.xpos[robot_body_id]
-            viewer.cam.lookat[:] = robot_pos
-            viewer.sync()
+    try:
+        with mujoco.viewer.launch_passive(model, data) as viewer:
+            while viewer.is_running():
+                step_start = time.time()
 
-            time_until_next = model.opt.timestep - (time.time() - step_start)
-            if time_until_next > 0:
-                time.sleep(time_until_next)
+                # Read joystick/keyboard input
+                velocity_cmd = joystick.get_velocity_command()
 
-    print("Demo finished")
+                # Print velocity command periodically
+                if time.time() - last_cmd_print > 1.0 and not velocity_cmd.is_stationary():
+                    print(
+                        f"[CMD] vx:{velocity_cmd.vx:6.3f} vy:{velocity_cmd.vy:6.3f} ω:{velocity_cmd.omega:6.3f}"
+                    )
+                    last_cmd_print = time.time()
+
+                # Update gait and apply to robot
+                apply_gait_targets(controller, model.opt.timestep, velocity_cmd)
+                mujoco.mj_step(model, data)
+
+                # Camera follows robot
+                robot_pos = data.xpos[robot_body_id]
+                viewer.cam.lookat[:] = robot_pos
+                viewer.sync()
+
+                # Maintain real-time execution
+                time_until_next = model.opt.timestep - (time.time() - step_start)
+                if time_until_next > 0:
+                    time.sleep(time_until_next)
+
+    finally:
+        joystick.shutdown()
+        print("\nDemo finished")
 
 
 if __name__ == "__main__":
