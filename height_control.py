@@ -11,6 +11,7 @@ from gait_controller import DiagonalGaitController, GaitParameters
 from ik import solve_leg_ik_3dof
 
 IK_PARAMS = dict(L1=0.045, L2=0.06, base_dist=0.021, mode=2)
+FORWARD_SIGN = -1.0  # +1 keeps controller +X, -1 flips to match leg IK frame
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,12 @@ def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> N
         if target is None:
             continue
 
-        result = solve_leg_ik_3dof(target, **IK_PARAMS)
+        # Map controller forward direction to leg-local IK frame.
+        # Current robot geometry yields opposite X sense; flip to move forward.
+        target_local = target.copy()
+        target_local[0] *= FORWARD_SIGN
+
+        result = solve_leg_ik_3dof(target_local, **IK_PARAMS)
         if result is None:
             print(f"[WARN] IK failed for leg {leg} with target {target}")
             continue
