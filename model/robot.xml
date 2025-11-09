@@ -222,10 +222,57 @@
 
   <!-- End-effector readouts (tip_L == tip_R per equality) -->
   <sensor>
-    <framepos name="FL_ee_pos" objtype="site" objname="FL_tip_L"/>
-    <framepos name="FR_ee_pos" objtype="site" objname="FR_tip_L"/>
-    <framepos name="RL_ee_pos" objtype="site" objname="RL_tip_L"/>
-    <framepos name="RR_ee_pos" objtype="site" objname="RR_tip_L"/>
+    <!-- Body state sensors -->
+    <framepos name="body_pos" objtype="body" objname="robot"/>
+    <framequat name="body_quat" objtype="body" objname="robot"/>
+    <framelinvel name="body_linvel" objtype="body" objname="robot"/>
+    <frameangvel name="body_angvel" objtype="body" objname="robot"/>
+
+    <!-- Joint position sensors (actuated joints only) -->
+    <jointpos name="FL_tilt_pos" joint="FL_tilt"/>
+    <jointpos name="FL_shoulder_L_pos" joint="FL_shoulder_L"/>
+    <jointpos name="FL_shoulder_R_pos" joint="FL_shoulder_R"/>
+
+    <jointpos name="FR_tilt_pos" joint="FR_tilt"/>
+    <jointpos name="FR_shoulder_L_pos" joint="FR_shoulder_L"/>
+    <jointpos name="FR_shoulder_R_pos" joint="FR_shoulder_R"/>
+
+    <jointpos name="RL_tilt_pos" joint="RL_tilt"/>
+    <jointpos name="RL_shoulder_L_pos" joint="RL_shoulder_L"/>
+    <jointpos name="RL_shoulder_R_pos" joint="RL_shoulder_R"/>
+
+    <jointpos name="RR_tilt_pos" joint="RR_tilt"/>
+    <jointpos name="RR_shoulder_L_pos" joint="RR_shoulder_L"/>
+    <jointpos name="RR_shoulder_R_pos" joint="RR_shoulder_R"/>
+
+    <!-- Joint velocity sensors (actuated joints only) -->
+    <jointvel name="FL_tilt_vel" joint="FL_tilt"/>
+    <jointvel name="FL_shoulder_L_vel" joint="FL_shoulder_L"/>
+    <jointvel name="FL_shoulder_R_vel" joint="FL_shoulder_R"/>
+
+    <jointvel name="FR_tilt_vel" joint="FR_tilt"/>
+    <jointvel name="FR_shoulder_L_vel" joint="FR_shoulder_L"/>
+    <jointvel name="FR_shoulder_R_vel" joint="FR_shoulder_R"/>
+
+    <jointvel name="RL_tilt_vel" joint="RL_tilt"/>
+    <jointvel name="RL_shoulder_L_vel" joint="RL_shoulder_L"/>
+    <jointvel name="RL_shoulder_R_vel" joint="RL_shoulder_R"/>
+
+    <jointvel name="RR_tilt_vel" joint="RR_tilt"/>
+    <jointvel name="RR_shoulder_L_vel" joint="RR_shoulder_L"/>
+    <jointvel name="RR_shoulder_R_vel" joint="RR_shoulder_R"/>
+
+    <!-- Foot position sensors -->
+    <framepos name="FL_foot_pos" objtype="site" objname="FL_tip_L"/>
+    <framepos name="FR_foot_pos" objtype="site" objname="FR_tip_L"/>
+    <framepos name="RL_foot_pos" objtype="site" objname="RL_tip_L"/>
+    <framepos name="RR_foot_pos" objtype="site" objname="RR_tip_L"/>
+
+    <!-- Foot velocity sensors -->
+    <framelinvel name="FL_foot_vel" objtype="site" objname="FL_tip_L"/>
+    <framelinvel name="FR_foot_vel" objtype="site" objname="FR_tip_L"/>
+    <framelinvel name="RL_foot_vel" objtype="site" objname="RL_tip_L"/>
+    <framelinvel name="RR_foot_vel" objtype="site" objname="RR_tip_L"/>
   </sensor>
 </mujoco>
 
