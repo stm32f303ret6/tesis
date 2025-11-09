@@ -1,0 +1,30 @@
+============================================================
+                  Detailed Workspace Range                  
+============================================================
+
+X-axis (Forward/Backward) range:
+  Min: -0.0942 m (-94.2 mm)
+  Max: +0.0942 m (+94.2 mm)
+  Range: 0.1885 m (188.5 mm)
+
+Y-axis (Lateral/Sideways) range:
+  Min: -0.0525 m (-52.5 mm)
+  Max: +0.0525 m (+52.5 mm)
+  Range: 0.1050 m (105.0 mm)
+
+Z-axis (Vertical, negative is down) range:
+  Min: -0.1050 m (-105.0 mm)
+  Max: +0.0210 m (+21.0 mm)
+  Range: 0.1260 m (126.0 mm)
+
+Physical parameters:
+  L1 (upper link): 0.045 m (45.0 mm)
+  L2 (lower link): 0.06 m (60.0 mm)
+  Base distance: 0.021 m (21.0 mm)
+  Max reach: 0.105 m (105.0 mm)
+  Min reach: 0.015 m (15.0 mm)
+  IK Mode: 2
+
+Reachable points: 45608 / 64000
+Workspace coverage: 71.3%
+============================================================
