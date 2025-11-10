@@ -1,33 +1,31 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `height_control.py` is the live MuJoCo demo, orchestrating sinusoidal leg motion and camera tracking.
-- `ik.py` encapsulates planar and 3DOF inverse-kinematics routines reused by the viewer and command-line probes.
-- `model/world.xml` references `model/robot.xml`, which in turn links meshes from `model/assets/`; modify assets or XMLs together to keep joint names stable.
-- `model/openscad/` stores editable CAD sources alongside generated `.stl` files; regenerate meshes here before copying into `model/assets/`.
+- Root scripts drive day-to-day work: `height_control.py` launches the MuJoCo demo, `gait_controller.py` carries the diagonal gait state machine, and `ik.py` owns the SCARA solvers shared by sim and tooling.
+- Utilities such as `foot_range_calculator.py` (workspace sweeps) and the `tests/compare_world_trajectories.py` harness surface regressions; consult `CLAUDE.md` for safe parameter envelopes.
+- All scenes, robot definitions, and meshes live under `model/`; keep body/joint names stable because controllers index MuJoCo objects by string.
+- The `tests/` folder stores regression scripts, its README, and the tracked `trajectory_comparison.png`.
 
 ## Build, Test, and Development Commands
-- `python3 -m venv .venv && source .venv/bin/activate` creates an isolated environment for MuJoCo development.
-- `pip install mujoco numpy` installs the only required Python dependencies seen in the scripts.
-- `python height_control.py` launches the passive MuJoCo viewer with the oscillating height demo.
-- `python ik.py` runs analytical IK spot-checks that cover both planar and tilted-leg modes.
+- `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt` – boots the MuJoCo + NumPy toolchain.
+- `python3 height_control.py` – interactive trot demo (`MUJOCO_GL=egl` for headless nodes or CI).
+- `python3 foot_range_calculator.py` – verifies reachable volumes after geometry or parameter edits.
+- `python3 tests/compare_world_trajectories.py` – reruns both worlds and refreshes `tests/trajectory_comparison.png`.
+- `python3 ik.py` – smoke-test for solver math; run before pushing IK changes.
 
 ## Coding Style & Naming Conventions
-- Follow PEP 8: four-space indentation, line length ≤ 100, and module-level constants in upper snake case.
-- Functions and variables stay in snake_case (`solve_leg_ik_3dof`); keep short, descriptive docstrings explaining frames and units.
-- Group imports into standard library, third-party, and local blocks, mirroring the existing files.
-- XML and SCAD filenames use lowercase words separated by underscores; keep joint and body names stable to avoid MuJoCo warnings.
+- Follow PEP 8, 4-space indents, ≤100-character lines, snake_case identifiers, and UPPER_SNAKE_CASE constants (`LEG_NAMES`, `IK_PARAMS`). Dataclasses (e.g., `GaitParameters`) group tunables.
+- Use type hints, short docstrings that state frames/units, and grouped imports (stdlib → third-party → local). Prefer vectorized NumPy operations and side-effect-light helpers to ease testing.
 
 ## Testing Guidelines
-- Extend the lightweight checks in `ik.py` into `pytest` cases under `tests/` (name files `test_*.py`) to guard new IK modes.
-- Before publishing changes that touch simulation parameters, run `python height_control.py` and observe joint limits, console warnings, and viewer stability.
-- For headless verification, run `MUJOCO_GL=egl python height_control.py` to ensure the demo survives CI-like environments.
+- Re-run `python3 ik.py` and `python3 foot_range_calculator.py` whenever IK math, link lengths, or gait limits move; attach logs in review when behavior shifts.
+- Execute `python3 tests/compare_world_trajectories.py` from the repo root. Treat unexpected PNG diffs as red flags and note intentional ones in PR descriptions.
+- Add new pytest-style modules in `tests/` (pattern `test_*.py`) with deterministic seeding for any stochastic sampling.
 
 ## Commit & Pull Request Guidelines
-- Match the repository history by writing brief, present-tense commit subjects (e.g., `adding primitives model`); scope to a single concern per commit.
-- Reference issues or design documents in the body when available, and note MuJoCo version or asset regeneration steps when relevant.
-- Pull requests should summarise scenario coverage, list modified XML/STL paths, and attach screenshots or short clips when visual behaviour changes.
+- Match the existing short, present-tense subjects (`adding rough terrain`, `adding foot range calculator`) and elaborate in bodies when touching MuJoCo XML, controller timing, or dependencies.
+- Each PR should state the behavior change, list reproduction commands, include updated plots/screenshots, link relevant issues, and call out required env vars (e.g., `MUJOCO_GL=egl`, MuJoCo keys).
 
 ## Simulation Assets & Configuration Tips
-- When tweaking kinematics, update link lengths in code, XML, and any derived constants together to avoid drift between simulation and analysis.
-- Re-export SCAD models with `openscad -o model/assets/<part>.stl model/openscad/<part>.scad` and verify mesh orientation before committing.
+- Regenerate meshes through `model/openscad/` and synchronize any dimension shift with `IK_PARAMS`/`GAIT_PARAMS` plus the XML files to avoid drift.
+- Keep MuJoCo licenses in `~/.mujoco`; for headless automation export `MUJOCO_GL=egl` or `osmesa` before running the simulator to prevent GL backend failures.

@@ -26,43 +26,70 @@ The 3DOF IK transforms 3D targets (x, y, z) into joint angles (tilt, shoulder_L,
 2. Projecting the target into the tilted leg's planar frame
 3. Solving the 2DOF SCARA IK in that plane
 
-### Simulation Control (`height_control.py`)
-The main demo script orchestrating MuJoCo simulation:
-- Loads robot model from `model/world.xml`
-- `set_leg_height(x, y, z)`: Sets all four legs to target position using 3DOF IK
-- Implements sinusoidal height oscillation with optional lateral motion
-- Camera follows robot body during simulation
-- **Control mapping:** Front legs use indices 6-11, rear legs 0-5; rear shoulders are mirrored (negated)
+### Gait Controller (`gait_controller.py`)
+State machine-based diagonal gait generator using `transitions` library for coordination and `bezier` for smooth swing trajectories:
+- `DiagonalGaitController`: Main controller class managing trot gait with diagonal leg pairs
+- `GaitParameters`: Dataclass for gait configuration (body_height, step_length, step_height, cycle_time, swing_shape, lateral_offsets)
+- **Diagonal pairs:** FL+RR (pair_a), FR+RL (pair_b) alternate between swing and stance
+- **State machine:** Two states (`pair_a_swing`, `pair_b_swing`) with automatic transitions every half-cycle
+- **Swing trajectory:** Cubic Bézier curve with configurable shape parameter for lift/touchdown dynamics
+- **Stance trajectory:** Linear sweep from front to rear over the stance duration
+
+The controller outputs per-leg foot targets in leg-local frame, which are then transformed and fed to IK.
+
+### Main Simulation Script (`height_control.py`)
+Primary entry point for running the robot simulation:
+- Loads robot model from `model/world_train.xml` (rough terrain) or `model/world.xml` (flat)
+- `LEG_CONTROL` dictionary: Maps leg names to actuator indices, signs, and offsets
+- `apply_leg_angles()`: Transforms IK output (tilt, shoulder_L, shoulder_R) into MuJoCo actuator commands
+- `apply_gait_targets()`: Main control loop that evaluates gait, solves IK, applies commands
+- `FORWARD_SIGN = -1.0`: Flips controller +X to match leg IK frame for forward motion
+- **Control mapping:** FL=(0,1,2), RL=(3,4,5), FR=(6,7,8), RR=(9,10,11); rear shoulders negated, front/right shoulders offset by π
 
 ### MuJoCo Model Structure
-- `model/world.xml`: Top-level scene with ground plane, lighting, and includes `robot.xml`
+- `model/world.xml`: Flat ground plane scene with checker texture
+- `model/world_train.xml`: Rough terrain scene using heightfield from `hfield.png` for training/testing
 - `model/robot.xml`: Complete robot definition with 4 legs, each having:
   - Tilt joint (1 DOF, axis=[1,0,0])
   - Two shoulder joints (parallel SCARA, axis=[0,-1,0])
   - Two elbow joints (passive/constrained)
 - `model/assets/`: STL mesh files for all robot parts
 - `model/openscad/`: Editable CAD sources (`.scad`) and generated `.stl` files
+- `model/primitives_model/`: Simplified box geometry model for debugging
 
 **Important:** Joint names and body names in XML must stay stable to avoid breaking control code that references them by name.
+
+### Utility Scripts
+- `foot_range_calculator.py`: Calculates reachable workspace for each foot using IK, validates safe parameter ranges
+- `tests/compare_world_trajectories.py`: Compares robot trajectories between flat and rough terrain, generates matplotlib plots
 
 ## Development Commands
 
 ### Environment Setup
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install mujoco numpy
+pip install mujoco numpy transitions bezier matplotlib
 ```
 
 ### Running Simulations
 ```bash
-# Main height control demo (interactive viewer)
+# Main gait controller demo on rough terrain (default)
 python3 height_control.py
 
-# Headless mode (for CI/testing)
-MUJOCO_GL=egl python3 height_control.py
+# Run on flat terrain (edit height_control.py to load model/world.xml)
+python3 height_control.py
+
+# Headless mode (for CI/testing, requires MUJOCO_GL=egl)
+MUJOCO_GL=egl timeout 60 python3 height_control.py
 
 # IK verification tests
 python3 ik.py
+
+# Calculate foot workspace and validate safe ranges
+python3 foot_range_calculator.py
+
+# Compare trajectories between flat and rough terrain
+python3 tests/compare_world_trajectories.py
 ```
 
 ### Asset Pipeline
@@ -88,15 +115,19 @@ When modifying robot geometry:
 
 ## Common Pitfalls
 
-1. **Coordinate frame confusion**: The IK operates in leg-local frame where Z points down (gravity direction). Target positions should be negative Z for downward reach.
+1. **Coordinate frame confusion**: The IK operates in leg-local frame where Z points down (gravity direction). Target positions should be negative Z for downward reach. The gait controller uses forward +X, but this is flipped via `FORWARD_SIGN = -1.0` to match leg IK frame.
 
-2. **Control index mapping**: Front legs (FL, FR) use ctrl indices 6-11, rear legs (RL, RR) use 0-5. Each leg has 3 actuators: left shoulder, right shoulder (+π offset), tilt.
+2. **Control index mapping**: FL=(0,1,2), RL=(3,4,5), FR=(6,7,8), RR=(9,10,11). Each leg has 3 actuators in order: left shoulder, right shoulder, tilt. **Not** front=(6-11) rear=(0-5) as previously documented.
 
-3. **Rear leg mirroring**: Rear shoulder angles must be negated to maintain symmetric gait.
+3. **Shoulder angle transformations**: Rear legs (FL, RL) have shoulders negated (`sign=-1.0`), front/right legs (FR, RR) have right shoulder offset by π. See `LEG_CONTROL` dictionary in height_control.py:24-29.
 
 4. **Asset regeneration**: When updating SCAD files, remember to regenerate STL and copy to `model/assets/` before testing.
 
-5. **Reachability limits**: Max reach = L1 + L2 = 0.105m. Current code uses 15-90% of max reach as safe working range.
+5. **Reachability limits**: Max reach = L1 + L2 = 0.105m. Practical working range validated by `foot_range_calculator.py`.
+
+6. **Gait parameters**: When tuning `GaitParameters`, ensure step_height + body_height doesn't exceed reachable workspace. Use foot_range_calculator.py to verify targets are reachable before testing in simulation.
+
+7. **State machine timing**: The gait controller auto-transitions every `state_duration = cycle_time / 2.0`. Ensure MuJoCo timestep is small enough to capture smooth trajectory updates (default 0.002s works well).
 
 ## Commit Style
 

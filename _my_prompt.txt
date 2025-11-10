@@ -1,0 +1,8 @@
+in '/home/rsc/Desktop/repos/walk/height_control.py' '/home/rsc/Desktop/repos/walk/ik.py' '/home/rsc/Desktop/repos/walk/gait_controller.py' i already have implemented an IK + bezier curve gait controller for my quadruped robot that works fine in a flat ground '/home/rsc/Desktop/repos/walk/model/world.xml'
+
+now i need to use gymnasium + stable baseline 3 PPO to train my robot to walk in a rough terrain '/home/rsc/Desktop/repos/walk/model/world_train.xml'
+
+i was thinking to use Residual Learning that corrects the current existing trajectory, like final_foot_position = bezier_trajectory_position + ppo_residual
+the robot  '/home/rsc/Desktop/repos/walk/model/robot.xml' already include sensors for state space
+
+could you make a detailed plan in a markdown file? 

@@ -17,7 +17,7 @@
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
 
     <!-- Heightfield for terrain -->
-    <hfield name="terrain" file="hfield.png" size="10 10 .05 1.0"/>
+    <hfield name="terrain" file="hfield.png" size="8 8 .025 0.5"/>
   </asset>
 
 
