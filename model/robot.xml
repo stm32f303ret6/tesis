@@ -32,7 +32,7 @@
       <geom type="mesh" mesh="servo_tilt" pos="0.042 -0.038 0.012" euler="3.14159 0 0" material="mat_servo"/>
       <geom type="mesh" mesh="servo_tilt" pos="-0.042 0.018 0.012" euler="0 0 3.14159" material="mat_servo"/>
       <geom type="mesh" mesh="servo_tilt" pos="-0.042 -0.018 0.012" euler="3.14159 0 3.14159" material="mat_servo"/>
-      <geom name="box_geom" type="box" pos="0 0 -0.01" size="0.0375 0.04 0.01" rgba="0.1 0.1 0.8 1"/>
+      <geom name="box_geom" type="box" pos="0 0 -0.01" size="0.0375 0.04 0.01" rgba="0 1 0 1"/>
       <!-- =========================
            FRONT LEFT
            ========================= -->
