@@ -1,10 +1,10 @@
 {
-  "forward_velocity": 0.9063608088079593,
-  "lateral_stability": -0.045477063755601774,
-  "height": -0.1868650091588806,
-  "orientation": -1.5158493235589674,
-  "energy": -0.10008392916005501,
-  "smoothness": -0.2816581735003046,
-  "contact_pattern": -0.6949999999999992,
+  "forward_velocity": 0.7938795716458164,
+  "lateral_stability": -0.0028853745606226243,
+  "height": -0.05430667869072426,
+  "orientation": -0.0016616837265624191,
+  "energy": -0.09645698443328624,
+  "smoothness": -0.2728023363021499,
+  "contact_pattern": -0.8000000000000006,
   "joint_limits": 0.0
 }

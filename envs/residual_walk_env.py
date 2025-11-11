@@ -110,8 +110,9 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         gait_params: Optional[GaitParameters] = None,
         residual_scale: float = 0.02,
         target_velocity: float = 0.2,
-        target_height: float = 0.05,
+        target_height: float = 0.07,
         max_episode_steps: int = 1000,
+        settle_steps: int = 500,
         seed: Optional[int] = None,
     ) -> None:
         super().__init__()
@@ -131,6 +132,7 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         self.target_velocity = float(target_velocity)
         self.target_height = float(target_height)
         self.max_episode_steps = int(max_episode_steps)
+        self.settle_steps = int(settle_steps)
 
         # RNG
         try:
@@ -273,13 +275,13 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         # 3. Body height maintenance
         body_pos = self.sensor_reader.read_sensor("body_pos")
         height_error = abs(float(body_pos[2]) - self.target_height)
-        rewards["height"] = -2.0 * height_error
+        rewards["height"] = -1.0 * height_error
 
         # 4. Body orientation (stay upright)
         quat = self.sensor_reader.get_body_quaternion()
         roll, pitch, _ = quat_to_euler(quat)
         tilt_penalty = roll * roll + pitch * pitch
-        rewards["orientation"] = -3.0 * float(tilt_penalty)
+        rewards["orientation"] = -1.0 * float(tilt_penalty)
 
         # 5. Energy efficiency (penalize large actions)
         action_magnitude = float(np.linalg.norm(self.previous_action))
@@ -300,9 +302,17 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
             is_swing = int(swing_flags[leg]) == 1
             has_contact = foot_contacts[leg] > 0.5
             if is_swing and has_contact:
+                # Swing leg touching ground (BAD)
                 contact_reward -= 0.5
-            elif (not is_swing) and has_contact:
+            elif is_swing and not has_contact:
+                # Swing leg in air (GOOD)
                 contact_reward += 0.1
+            elif (not is_swing) and has_contact:
+                # Stance leg on ground (GOOD)
+                contact_reward += 0.1
+            else:  # (not is_swing) and (not has_contact)
+                # Stance leg floating in air (BAD)
+                contact_reward -= 0.5
         rewards["contact_pattern"] = float(contact_reward)
 
         # 8. Joint limits penalty (soft)
@@ -359,8 +369,25 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         self.previous_action = np.zeros(12, dtype=float)
         self.last_last_action = None
 
-        # Forward a few steps to settle
-        for _ in range(10):
+        # Settle on rough terrain: run gait controller with zero residuals
+        # This allows the robot to stabilize its height and contact pattern
+        zero_residuals = {leg: np.zeros(3) for leg in LEG_NAMES}
+        for _ in range(self.settle_steps):
+            # Update controller to advance gait phase
+            final_targets = self.controller.update_with_residuals(
+                self.model.opt.timestep, zero_residuals
+            )
+
+            # Apply IK and step simulation
+            for leg in LEG_NAMES:
+                target = np.asarray(final_targets[leg], dtype=float)
+                target_local = target.copy()
+                target_local[0] *= FORWARD_SIGN
+
+                result = solve_leg_ik_3dof(target_local, **IK_PARAMS)
+                if result is not None:
+                    apply_leg_angles(self.data, leg, result)
+
             mujoco.mj_step(self.model, self.data)
 
         obs = self._get_observation()
