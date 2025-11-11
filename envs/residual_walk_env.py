@@ -94,9 +94,9 @@ def euler_to_quat(roll: float, pitch: float, yaw: float) -> np.ndarray:
 class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
     """Gymnasium-compatible env for PPO residual learning.
 
-    Observation (~70–80D):
+    Observation (~80D):
     - quat(4), lin vel(3), ang vel(3), projected gravity(3)
-    - joint pos/vel(24), phase sin/cos(2), swing/stance(4)
+    - joint pos/vel(24), foot pos/vel (24), phase sin/cos(2), swing/stance(4)
     - prev action(12), command vel(1)
 
     Action (12D): residual per leg in [-1, 1] scaled by residual_scale.
@@ -193,6 +193,12 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         joint_states = self.sensor_reader.get_joint_states()
         obs_components.append(joint_states)
 
+        # Foot positions and velocities (24D)
+        foot_positions = self.sensor_reader.get_foot_positions()
+        obs_components.append(foot_positions)
+        foot_velocities = self.sensor_reader.get_foot_velocities()
+        obs_components.append(foot_velocities)
+
         # Gait phase (sin/cos)
         phase_info = self.controller.get_phase_info()
         phase = float(phase_info.get("phase_normalized", 0.0))
@@ -270,7 +276,7 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         rewards["height"] = -2.0 * height_error
 
         # 4. Body orientation (stay upright)
-        quat = self.sensor_reader.read_sensor("body_quat")
+        quat = self.sensor_reader.get_body_quaternion()
         roll, pitch, _ = quat_to_euler(quat)
         tilt_penalty = roll * roll + pitch * pitch
         rewards["orientation"] = -3.0 * float(tilt_penalty)
@@ -310,7 +316,7 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
     def _check_termination(self) -> Tuple[bool, bool]:
         """Return (terminated, truncated)."""
         body_pos = self.sensor_reader.read_sensor("body_pos")
-        quat = self.sensor_reader.read_sensor("body_quat")
+        quat = self.sensor_reader.get_body_quaternion()
         roll, pitch, _ = quat_to_euler(quat)
         terminated = bool(
             (float(body_pos[2]) < 0.03)

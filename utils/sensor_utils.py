@@ -8,7 +8,7 @@ Frames/units follow MuJoCo defaults:
 
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import mujoco
@@ -25,16 +25,32 @@ class SensorReader:
         self.model = model
         self.data = data
         self.sensor_map: Dict[str, Tuple[int, int]] = {}
+        self.sensor_objids: Dict[str, int] = {}
+        self.sensor_types: Dict[str, int] = {}
+        self._body_quat_body_id: Optional[int] = None
         self._build_sensor_map()
 
     def _build_sensor_map(self) -> None:
         self.sensor_map.clear()
+        self.sensor_objids.clear()
+        self.sensor_types.clear()
+        self._body_quat_body_id = None
         for i in range(self.model.nsensor):
             name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_SENSOR, i)
             adr = int(self.model.sensor_adr[i])
             dim = int(self.model.sensor_dim[i])
             if name is not None:
                 self.sensor_map[name] = (adr, dim)
+                objid = int(self.model.sensor_objid[i])
+                stype = int(self.model.sensor_type[i])
+                self.sensor_objids[name] = objid
+                self.sensor_types[name] = stype
+                if (
+                    name == "body_quat"
+                    and stype == mujoco.mjtSensor.mjSENS_FRAMEQUAT
+                    and objid >= 0
+                ):
+                    self._body_quat_body_id = objid
 
     def list_sensors(self) -> Tuple[str, ...]:
         return tuple(self.sensor_map.keys())
@@ -48,10 +64,16 @@ class SensorReader:
     def get_body_state(self) -> np.ndarray:
         """Return [pos(3), quat(4), linvel(3), angvel(3)] = 13D."""
         pos = self.read_sensor("body_pos")
-        quat = self.read_sensor("body_quat")
+        quat = self.get_body_quaternion()
         linvel = self.read_sensor("body_linvel")
         angvel = self.read_sensor("body_angvel")
         return np.concatenate([pos, quat, linvel, angvel])
+
+    def get_body_quaternion(self) -> np.ndarray:
+        """Return body orientation quaternion [w, x, y, z] from model state."""
+        if self._body_quat_body_id is not None:
+            return self.data.xquat[self._body_quat_body_id].copy()
+        return self.read_sensor("body_quat")
 
     def get_joint_states(self) -> np.ndarray:
         """Return all 12 joint positions + 12 velocities = 24D.
@@ -109,4 +131,3 @@ class SensorReader:
             self.read_sensor("RR_foot_vel"),
         ]
         return np.concatenate(vels)
-
