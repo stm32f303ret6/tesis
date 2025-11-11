@@ -1,0 +1,2 @@
+episode=0 mode=baseline_zero reward=732.489 steps=1001 distance=0.088 avg_height=0.1201 avg_fwd_vel=0.0882 terminated=True truncated=True
+episode=1 mode=baseline_zero reward=732.489 steps=1001 distance=0.088 avg_height=0.1201 avg_fwd_vel=0.0882 terminated=True truncated=True
