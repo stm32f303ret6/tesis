@@ -210,7 +210,7 @@ def compute_reward(
             contact_reward += 0.1
         else:
             contact_reward -= 0.5
-    rewards["contact_pattern"] = float(contact_reward)
+    rewards["contact_pattern"] = 0.1 * float(contact_reward)  # Scaled down to reduce oscillation
 
     joint_positions = sensor.get_joint_states()[:12]
     limit_violations = float(np.sum(np.abs(joint_positions) > 2.5))
