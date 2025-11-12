@@ -8,6 +8,11 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 from PIL import Image
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image as RosImage
+from std_msgs.msg import Int32
+from cv_bridge import CvBridge
 
 from gait_controller import DiagonalGaitController, GaitParameters
 from ik import solve_leg_ik_3dof
@@ -32,6 +37,54 @@ LEG_CONTROL: Dict[str, LegControl] = {
 
 GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.06, step_height=0.04, cycle_time=0.8)
 
+
+class RobotControlNode(Node):
+    """ROS2 node for publishing camera images and receiving movement commands."""
+
+    def __init__(self):
+        super().__init__('robot_control_node')
+
+        # Publishers
+        self.camera_publisher = self.create_publisher(RosImage, 'robot_camera', 10)
+
+        # Subscribers
+        self.movement_subscriber = self.create_subscription(
+            Int32,
+            'movement_command',
+            self.movement_callback,
+            10
+        )
+
+        # CvBridge for converting images
+        self.bridge = CvBridge()
+
+        # Movement command state (0=no movement, 1=up, 2=down)
+        self.movement_command = 0
+
+        self.get_logger().info('Robot Control Node initialized')
+
+    def movement_callback(self, msg):
+        """Handle incoming movement commands."""
+        self.movement_command = msg.data
+        if self.movement_command == 1:
+            self.get_logger().info('Movement command: UP')
+        elif self.movement_command == 2:
+            self.get_logger().info('Movement command: DOWN')
+        elif self.movement_command == 0:
+            self.get_logger().info('Movement command: STOP')
+
+    def publish_camera_image(self, pixels):
+        """Publish camera image to ROS2 topic."""
+        try:
+            # Convert numpy array (RGB) to ROS Image message
+            ros_image = self.bridge.cv2_to_imgmsg(pixels, encoding='rgb8')
+            ros_image.header.stamp = self.get_clock().now().to_msg()
+            ros_image.header.frame_id = 'robot_camera'
+            self.camera_publisher.publish(ros_image)
+        except Exception as e:
+            self.get_logger().error(f'Failed to publish image: {e}')
+
+
 model = mujoco.MjModel.from_xml_path("model/world_train.xml")
 data = mujoco.MjData(model)
 robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
@@ -50,8 +103,22 @@ def apply_leg_angles(ctrl: mujoco.MjData, leg: str, angles: Tuple[float, float, 
     ctrl.ctrl[idx_tilt] = tilt
 
 
-def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> None:
-    """Evaluate the gait planner and push the resulting joint targets to MuJoCo."""
+def apply_gait_targets(controller: DiagonalGaitController, timestep: float, movement_command: int = 0) -> None:
+    """Evaluate the gait planner and push the resulting joint targets to MuJoCo.
+
+    Args:
+        controller: The gait controller
+        timestep: Time step for simulation
+        movement_command: 0=stop, 1=forward, 2=backward
+    """
+    # Adjust gait based on movement command
+    if movement_command == 0:
+        # No movement - freeze gait (don't update time)
+        timestep = 0.0
+    elif movement_command == 2:
+        # Down/backward - invert the forward direction
+        timestep = timestep  # Normal timestep, but we'll flip the direction
+
     leg_targets = controller.update(timestep)
 
     for leg in LEG_CONTROL:
@@ -62,7 +129,13 @@ def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> N
         # Map controller forward direction to leg-local IK frame.
         # Current robot geometry yields opposite X sense; flip to move forward.
         target_local = target.copy()
-        target_local[0] *= FORWARD_SIGN
+
+        # Apply direction based on movement command
+        if movement_command == 2:
+            # Invert X direction for backward movement
+            target_local[0] *= -FORWARD_SIGN
+        else:
+            target_local[0] *= FORWARD_SIGN
 
         result = solve_leg_ik_3dof(target_local, **IK_PARAMS)
         if result is None:
@@ -73,52 +146,57 @@ def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> N
 
 
 def main() -> None:
+    # Initialize ROS2
+    rclpy.init()
+
+    # Create ROS2 node
+    ros_node = RobotControlNode()
+
     controller = DiagonalGaitController(GAIT_PARAMS)
     controller.reset()
-
-    # Create output directory for camera images
-    os.makedirs("camera_images", exist_ok=True)
 
     # Create offscreen renderer for camera captures
     renderer = mujoco.Renderer(model, height=480, width=640)
     camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "robot_camera")
 
-    # Track time for periodic image capture
+    # Track time for periodic image capture (every 0.1 seconds)
     last_capture_time = 0.0
-    capture_interval = 2.0  # seconds
-    image_counter = 0
+    capture_interval = 0.1  # seconds
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
             step_start = time.time()
 
-            apply_gait_targets(controller, model.opt.timestep)
+            # Process ROS2 callbacks
+            rclpy.spin_once(ros_node, timeout_sec=0.0)
+
+            # Apply gait with movement command from ROS2
+            apply_gait_targets(controller, model.opt.timestep, ros_node.movement_command)
             mujoco.mj_step(model, data)
 
             robot_pos = data.xpos[robot_body_id]
             viewer.cam.lookat[:] = robot_pos
             viewer.sync()
 
-            # Capture image every 2 seconds
+            # Capture and publish image every 0.1 seconds
             current_time = data.time
             if current_time - last_capture_time >= capture_interval:
                 # Render from robot camera
                 renderer.update_scene(data, camera=camera_id)
                 pixels = renderer.render()
 
-                # Save as PNG
-                img = Image.fromarray(pixels)
-                filename = f"camera_images/frame_{image_counter:04d}.png"
-                img.save(filename)
-                print(f"Saved {filename} at t={current_time:.2f}s")
+                # Publish to ROS2 topic
+                ros_node.publish_camera_image(pixels)
 
                 last_capture_time = current_time
-                image_counter += 1
 
             time_until_next = model.opt.timestep - (time.time() - step_start)
             if time_until_next > 0:
                 time.sleep(time_until_next)
 
+    # Cleanup ROS2
+    ros_node.destroy_node()
+    rclpy.shutdown()
     print("Demo finished")
 
 

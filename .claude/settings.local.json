@@ -14,7 +14,8 @@
       "Bash(find:*)",
       "Bash(MUJOCO_GL=egl timeout 10 python3:*)",
       "Bash(MUJOCO_GL=egl timeout 60 python3:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(ros2 --version:*)"
     ],
     "deny": [],
     "ask": []

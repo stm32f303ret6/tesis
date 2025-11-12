@@ -6,15 +6,65 @@ import sys
 import os
 import sqlite3
 import pygame
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image as RosImage
+from std_msgs.msg import Int32
+from cv_bridge import CvBridge
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.uic import loadUi
 
 
-class MainWindow(QMainWindow):
+class GuiRosNode(Node):
+    """ROS2 node for GUI - subscribes to camera images and publishes movement commands."""
+
     def __init__(self):
+        super().__init__('gui_ros_node')
+
+        # Subscribers
+        self.camera_subscriber = self.create_subscription(
+            RosImage,
+            'robot_camera',
+            self.camera_callback,
+            10
+        )
+
+        # Publishers
+        self.movement_publisher = self.create_publisher(Int32, 'movement_command', 10)
+
+        # CvBridge for converting images
+        self.bridge = CvBridge()
+
+        # Store latest image
+        self.latest_image = None
+
+        self.get_logger().info('GUI ROS Node initialized')
+
+    def camera_callback(self, msg):
+        """Handle incoming camera images."""
+        try:
+            # Convert ROS Image to numpy array (RGB)
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
+            self.latest_image = cv_image
+        except Exception as e:
+            self.get_logger().error(f'Failed to convert image: {e}')
+
+    def publish_movement_command(self, command):
+        """Publish movement command (0=no movement, 1=up, 2=down)."""
+        msg = Int32()
+        msg.data = command
+        self.movement_publisher.publish(msg)
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, ros_node):
         super().__init__()
+
+        # Store ROS2 node reference
+        self.ros_node = ros_node
 
         # Get the directory where this script is located
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -56,6 +106,16 @@ class MainWindow(QMainWindow):
         self.joystick_timer.timeout.connect(self.poll_joystick)
         self.joystick_timer.start(50)  # Poll every 50ms
 
+        # Setup timer for ROS2 spin
+        self.ros_timer = QTimer()
+        self.ros_timer.timeout.connect(self.process_ros)
+        self.ros_timer.start(10)  # Process ROS2 callbacks every 10ms
+
+        # Setup timer for camera display update
+        self.camera_timer = QTimer()
+        self.camera_timer.timeout.connect(self.update_camera_display)
+        self.camera_timer.start(100)  # Update display every 100ms (0.1 seconds)
+
         # Track current joystick state
         self.joystick_state = {
             'up': False,
@@ -63,6 +123,9 @@ class MainWindow(QMainWindow):
             'left': False,
             'right': False
         }
+
+        # Track last published movement command
+        self.last_movement_command = 0
 
     def setup_ui(self):
         """Initialize UI elements."""
@@ -175,6 +238,39 @@ class MainWindow(QMainWindow):
 
         print(f"Login successful. Role: {self.user_role}")
 
+    def process_ros(self):
+        """Process ROS2 callbacks."""
+        rclpy.spin_once(self.ros_node, timeout_sec=0.0)
+
+    def update_camera_display(self):
+        """Update camera_label with latest image from ROS2."""
+        if self.ros_node.latest_image is not None:
+            try:
+                # Convert numpy array (RGB) to QImage
+                height, width, channel = self.ros_node.latest_image.shape
+                bytes_per_line = 3 * width
+                q_image = QImage(
+                    self.ros_node.latest_image.data,
+                    width,
+                    height,
+                    bytes_per_line,
+                    QImage.Format_RGB888
+                )
+
+                # Convert QImage to QPixmap and display
+                pixmap = QPixmap.fromImage(q_image)
+
+                # Scale to fit camera_label while maintaining aspect ratio
+                scaled_pixmap = pixmap.scaled(
+                    self.camera_label.size(),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+
+                self.camera_label.setPixmap(scaled_pixmap)
+            except Exception as e:
+                print(f"Error updating camera display: {e}")
+
     def poll_joystick(self):
         """Poll joystick state and update UI."""
         if not self.joystick:
@@ -235,9 +331,24 @@ class MainWindow(QMainWindow):
                 right='orange' if new_state['right'] else 'brown'
             )
 
+        # Publish movement command via ROS2
+        # 0 = no movement, 1 = up, 2 = down
+        movement_command = 0
+        if new_state['up']:
+            movement_command = 1
+        elif new_state['down']:
+            movement_command = 2
+
+        # Only publish if command changed
+        if movement_command != self.last_movement_command:
+            self.ros_node.publish_movement_command(movement_command)
+            self.last_movement_command = movement_command
+
     def closeEvent(self, event):
         """Clean up when window is closed."""
         self.joystick_timer.stop()
+        self.ros_timer.stop()
+        self.camera_timer.stop()
         if self.joystick:
             self.joystick.quit()
         pygame.quit()
@@ -245,10 +356,25 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # Initialize ROS2
+    rclpy.init()
+
+    # Create ROS2 node
+    ros_node = GuiRosNode()
+
+    # Create Qt application and main window
     app = QApplication(sys.argv)
-    w = MainWindow()
+    w = MainWindow(ros_node)
     w.show()
-    sys.exit(app.exec_())
+
+    # Run application
+    exit_code = app.exec_()
+
+    # Cleanup ROS2
+    ros_node.destroy_node()
+    rclpy.shutdown()
+
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':
