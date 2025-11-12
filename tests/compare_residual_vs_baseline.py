@@ -35,10 +35,18 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from envs.residual_walk_env import ResidualWalkEnv
+from gait_controller import GaitParameters
 
 
 def make_env() -> ResidualWalkEnv:
-    return ResidualWalkEnv(model_path="model/world_train.xml")
+    # Use same gait parameters as training
+    gait = GaitParameters(
+        body_height=0.05,
+        step_length=0.06,
+        step_height=0.04,
+        cycle_time=0.8
+    )
+    return ResidualWalkEnv(model_path="model/world_train.xml", gait_params=gait)
 
 
 def load_vecnormalize(path: Optional[str | Path]) -> Optional[VecNormalize]:

@@ -1,0 +1,15 @@
+total_timesteps: 5000000
+n_envs: 16
+n_steps: 2048
+batch_size: 512
+learning_rate: 0.0003
+gamma: 0.99
+gae_lambda: 0.95
+n_epochs: 10
+ent_coef: 0.0
+clip_range: 0.2
+run_name: prod_fixed
+log_root: runs
+checkpoint_freq: 100000
+randomize: False
+device: auto

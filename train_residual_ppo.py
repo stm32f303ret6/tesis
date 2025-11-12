@@ -22,11 +22,23 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from envs.residual_walk_env import ResidualWalkEnv
+from gait_controller import GaitParameters
 
 
 def make_env(log_dir: Path, rank: int):
     def _init():
-        env = ResidualWalkEnv()
+        # Use gait parameters that work well for rough terrain
+        # These match the baseline controller used in height_control.py
+        gait = GaitParameters(
+            body_height=0.05,
+            step_length=0.06,
+            step_height=0.04,
+            cycle_time=0.8
+        )
+        env = ResidualWalkEnv(
+            model_path="model/world_train.xml",
+            gait_params=gait,
+        )
         # Monitor writes per-episode stats; helps SB3 compute ep_rew_mean
         monitor_file = log_dir / f"monitor_{rank}.csv"
         env = Monitor(env, filename=str(monitor_file))

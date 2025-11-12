@@ -174,3 +174,29 @@ def _compute_reward(self) -> Tuple[float, Dict[str, float]]:
 **The command is correct. The code works. But the model learned the wrong thing.**
 
 This is a classic **reward hacking** problem in RL: the agent found a way to get high reward (stay still and stable) without achieving the actual goal (robust terrain walking).
+
+---
+
+## ✅ FIXES IMPLEMENTED
+
+All fixes have been applied. See `TRAINING_FIXES.md` for details.
+
+### Quick Start
+```bash
+# Train with fixed parameters (10M steps, ~1.5 hours)
+bash train_quick.sh
+
+# Or use the detailed script
+python3 train_residual_ppo_v2.py --total-timesteps 10000000 --n-envs 12
+
+# Evaluate the result
+python3 debug_model.py runs/prod_fixed_TIMESTAMP
+```
+
+### What Changed
+1. ✅ Fixed gait parameters in `train_residual_ppo.py`
+2. ✅ Improved reward function (5x velocity weight)
+3. ✅ Created `train_residual_ppo_v2.py` with best practices
+4. ✅ Updated all evaluation scripts for consistency
+
+See `TRAINING_FIXES.md` for complete documentation.

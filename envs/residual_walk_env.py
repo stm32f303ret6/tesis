@@ -110,7 +110,7 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         gait_params: Optional[GaitParameters] = None,
         residual_scale: float = 0.02,
         target_velocity: float = 0.2,
-        target_height: float = 0.07,
+        target_height: float = 0.07,  # Body center height, NOT foot height
         max_episode_steps: int = 1000,
         settle_steps: int = 500,
         seed: Optional[int] = None,
@@ -262,15 +262,15 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         """Compute reward and component breakdown for logging."""
         rewards: Dict[str, float] = {}
 
-        # 1. Forward velocity tracking (primary objective)
+        # 1. Forward velocity tracking (primary objective) - INCREASED WEIGHT
         linvel = self.sensor_reader.read_sensor("body_linvel")
         forward_vel = float(linvel[0])
         vel_error = abs(forward_vel - self.target_velocity)
-        rewards["forward_velocity"] = 1.0 - vel_error  # [~ -inf, 1]
+        rewards["forward_velocity"] = 5.0 * (1.0 - vel_error)  # 1.0 → 5.0
 
-        # 2. Lateral stability (penalize sideways drift)
+        # 2. Lateral stability (penalize sideways drift) - REDUCED WEIGHT
         lateral_vel = abs(float(linvel[1]))
-        rewards["lateral_stability"] = -0.5 * lateral_vel
+        rewards["lateral_stability"] = -0.3 * lateral_vel  # 0.5 → 0.3
 
         # 3. Body height maintenance
         body_pos = self.sensor_reader.read_sensor("body_pos")
@@ -283,14 +283,16 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         tilt_penalty = roll * roll + pitch * pitch
         rewards["orientation"] = -1.0 * float(tilt_penalty)
 
-        # 5. Energy efficiency (penalize large actions)
+        # 5. Energy efficiency (penalize large actions) - REDUCED WEIGHT
+        # Light penalty to allow residuals when needed for terrain adaptation
         action_magnitude = float(np.linalg.norm(self.previous_action))
-        rewards["energy"] = -0.1 * action_magnitude
+        rewards["energy"] = -0.05 * action_magnitude  # 0.1 → 0.05
 
-        # 6. Smooth control (penalize action changes)
+        # 6. Smooth control (penalize action changes) - REDUCED WEIGHT
+        # Residuals SHOULD vary with terrain, so keep this penalty minimal
         if self.last_last_action is not None:
             action_change = float(np.linalg.norm(self.previous_action - self.last_last_action))
-            rewards["smoothness"] = -0.2 * action_change
+            rewards["smoothness"] = -0.05 * action_change  # 0.2 → 0.05
         else:
             rewards["smoothness"] = 0.0
 
