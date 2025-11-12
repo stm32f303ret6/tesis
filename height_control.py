@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import time
 from dataclasses import dataclass
 from typing import Dict, Tuple
@@ -6,6 +7,7 @@ from typing import Dict, Tuple
 import mujoco
 import mujoco.viewer
 import numpy as np
+from PIL import Image
 
 from gait_controller import DiagonalGaitController, GaitParameters
 from ik import solve_leg_ik_3dof
@@ -74,6 +76,18 @@ def main() -> None:
     controller = DiagonalGaitController(GAIT_PARAMS)
     controller.reset()
 
+    # Create output directory for camera images
+    os.makedirs("camera_images", exist_ok=True)
+
+    # Create offscreen renderer for camera captures
+    renderer = mujoco.Renderer(model, height=480, width=640)
+    camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "robot_camera")
+
+    # Track time for periodic image capture
+    last_capture_time = 0.0
+    capture_interval = 2.0  # seconds
+    image_counter = 0
+
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
             step_start = time.time()
@@ -84,6 +98,22 @@ def main() -> None:
             robot_pos = data.xpos[robot_body_id]
             viewer.cam.lookat[:] = robot_pos
             viewer.sync()
+
+            # Capture image every 2 seconds
+            current_time = data.time
+            if current_time - last_capture_time >= capture_interval:
+                # Render from robot camera
+                renderer.update_scene(data, camera=camera_id)
+                pixels = renderer.render()
+
+                # Save as PNG
+                img = Image.fromarray(pixels)
+                filename = f"camera_images/frame_{image_counter:04d}.png"
+                img.save(filename)
+                print(f"Saved {filename} at t={current_time:.2f}s")
+
+                last_capture_time = current_time
+                image_counter += 1
 
             time_until_next = model.opt.timestep - (time.time() - step_start)
             if time_until_next > 0:
