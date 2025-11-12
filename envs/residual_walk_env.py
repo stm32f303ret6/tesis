@@ -94,10 +94,11 @@ def euler_to_quat(roll: float, pitch: float, yaw: float) -> np.ndarray:
 class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
     """Gymnasium-compatible env for PPO residual learning.
 
-    Observation (~80D):
-    - quat(4), lin vel(3), ang vel(3), projected gravity(3)
-    - joint pos/vel(24), foot pos/vel (24), phase sin/cos(2), swing/stance(4)
-    - prev action(12), command vel(1)
+    Observation (65D):
+    - body pos(3), quat(4), lin vel(3), ang vel(3)
+    - joint pos/vel(24)
+    - foot pos(12), foot vel(12)
+    - foot contacts(4)
 
     Action (12D): residual per leg in [-1, 1] scaled by residual_scale.
     """
@@ -109,8 +110,6 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         model_path: str = "model/world_train.xml",
         gait_params: Optional[GaitParameters] = None,
         residual_scale: float = 0.02,
-        target_velocity: float = 0.2,
-        target_height: float = 0.07,  # Body center height, NOT foot height
         max_episode_steps: int = 1000,
         settle_steps: int = 500,
         seed: Optional[int] = None,
@@ -127,10 +126,15 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         )
         self.sensor_reader = SensorReader(self.model, self.data)
 
-        # Targets and scaling
+        # Derive expected velocity from gait parameters
+        params = self.controller.base_controller.params
+        self.expected_velocity = float(params.step_length / params.cycle_time)
+
+        # Initial body height (set during reset)
+        self.initial_body_height: Optional[float] = None
+
+        # Scaling and episode config
         self.residual_scale = float(residual_scale)
-        self.target_velocity = float(target_velocity)
-        self.target_height = float(target_height)
         self.max_episode_steps = int(max_episode_steps)
         self.settle_steps = int(settle_steps)
 
@@ -173,51 +177,40 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         return mapping
 
     def _get_observation(self) -> np.ndarray:
-        """Construct observation vector."""
+        """Construct observation vector (65D).
+
+        Returns:
+            - body pos(3), quat(4), lin vel(3), ang vel(3)
+            - joint pos/vel(24)
+            - foot pos(12), foot vel(12)
+            - foot contacts(4)
+        """
         obs_components = []
 
-        # Body state
+        # Body state: position, orientation, velocities
         body_state = self.sensor_reader.get_body_state()
         pos, quat, linvel, angvel = np.split(body_state, [3, 7, 10])
         quat = quat / max(1e-9, np.linalg.norm(quat))  # Normalize defensively
 
-        obs_components.append(quat)  # 4D
-        obs_components.append(linvel)  # 3D
-        obs_components.append(angvel)  # 3D
+        obs_components.append(pos)     # 3D - body position
+        obs_components.append(quat)    # 4D - body orientation
+        obs_components.append(linvel)  # 3D - linear velocity
+        obs_components.append(angvel)  # 3D - angular velocity
 
-        # Projected gravity in body frame
-        gravity_world = np.array([0.0, 0.0, -1.0])
-        R = quat_to_rotation_matrix(quat)
-        gravity_body = R.T @ gravity_world
-        obs_components.append(gravity_body)  # 3D
-
-        # Joint states (24D)
+        # Joint states: positions and velocities (24D)
         joint_states = self.sensor_reader.get_joint_states()
         obs_components.append(joint_states)
 
-        # Foot positions and velocities (24D)
+        # Foot positions and velocities (12D + 12D = 24D)
         foot_positions = self.sensor_reader.get_foot_positions()
         obs_components.append(foot_positions)
         foot_velocities = self.sensor_reader.get_foot_velocities()
         obs_components.append(foot_velocities)
 
-        # Gait phase (sin/cos)
-        phase_info = self.controller.get_phase_info()
-        phase = float(phase_info.get("phase_normalized", 0.0))
-        obs_components.append(
-            np.array([math.sin(2 * math.pi * phase), math.cos(2 * math.pi * phase)])
-        )  # 2D
-
-        # Swing/stance flags
-        flags = self.controller.get_swing_stance_flags()
-        flag_array = np.array([flags[leg] for leg in LEG_NAMES], dtype=float)
-        obs_components.append(flag_array)  # 4D
-
-        # Previous actions
-        obs_components.append(self.previous_action.astype(float))  # 12D
-
-        # Command velocity
-        obs_components.append(np.array([self.target_velocity], dtype=float))  # 1D
+        # Foot contacts: binary flags for ground contact (4D)
+        foot_contacts = self._get_foot_contact_forces()
+        contact_array = np.array([foot_contacts[leg] for leg in LEG_NAMES], dtype=float)
+        obs_components.append(contact_array)
 
         obs = np.concatenate(obs_components).astype(np.float32)
         # Ensure finite
@@ -259,44 +252,21 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         return forces
 
     def _compute_reward(self) -> Tuple[float, Dict[str, float]]:
-        """Compute reward and component breakdown for logging."""
+        """Compute simplified reward focused on velocity and contact pattern.
+
+        Velocity and height targets are derived from gait parameters, not arbitrary.
+        Expected velocity = step_length / cycle_time from the base gait.
+        """
         rewards: Dict[str, float] = {}
 
-        # 1. Forward velocity tracking (primary objective) - INCREASED WEIGHT
+        # 1. Forward velocity tracking (primary objective)
+        # Track the expected velocity from gait parameters
         linvel = self.sensor_reader.read_sensor("body_linvel")
         forward_vel = float(linvel[0])
-        vel_error = abs(forward_vel - self.target_velocity)
-        rewards["forward_velocity"] = 5.0 * (1.0 - vel_error)  # 1.0 → 5.0
+        vel_error = abs(forward_vel - self.expected_velocity)
+        rewards["forward_velocity"] = 5.0 * (1.0 - vel_error)
 
-        # 2. Lateral stability (penalize sideways drift) - REDUCED WEIGHT
-        lateral_vel = abs(float(linvel[1]))
-        rewards["lateral_stability"] = -0.3 * lateral_vel  # 0.5 → 0.3
-
-        # 3. Body height maintenance
-        body_pos = self.sensor_reader.read_sensor("body_pos")
-        height_error = abs(float(body_pos[2]) - self.target_height)
-        rewards["height"] = -1.0 * height_error
-
-        # 4. Body orientation (stay upright)
-        quat = self.sensor_reader.get_body_quaternion()
-        roll, pitch, _ = quat_to_euler(quat)
-        tilt_penalty = roll * roll + pitch * pitch
-        rewards["orientation"] = -1.0 * float(tilt_penalty)
-
-        # 5. Energy efficiency (penalize large actions) - REDUCED WEIGHT
-        # Light penalty to allow residuals when needed for terrain adaptation
-        action_magnitude = float(np.linalg.norm(self.previous_action))
-        rewards["energy"] = -0.05 * action_magnitude  # 0.1 → 0.05
-
-        # 6. Smooth control (penalize action changes) - REDUCED WEIGHT
-        # Residuals SHOULD vary with terrain, so keep this penalty minimal
-        if self.last_last_action is not None:
-            action_change = float(np.linalg.norm(self.previous_action - self.last_last_action))
-            rewards["smoothness"] = -0.05 * action_change  # 0.2 → 0.05
-        else:
-            rewards["smoothness"] = 0.0
-
-        # 7. Foot contact pattern (encourage proper gait)
+        # 2. Foot contact pattern (encourage proper gait)
         foot_contacts = self._get_foot_contact_forces()
         swing_flags = self.controller.get_swing_stance_flags()
         contact_reward = 0.0
@@ -305,22 +275,31 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
             has_contact = foot_contacts[leg] > 0.5
             if is_swing and has_contact:
                 # Swing leg touching ground (BAD)
-                contact_reward -= 0.5
+                contact_reward -= 0.2
             elif is_swing and not has_contact:
                 # Swing leg in air (GOOD)
-                contact_reward += 0.1
+                contact_reward += 0.05
             elif (not is_swing) and has_contact:
                 # Stance leg on ground (GOOD)
-                contact_reward += 0.1
+                contact_reward += 0.05
             else:  # (not is_swing) and (not has_contact)
                 # Stance leg floating in air (BAD)
-                contact_reward -= 0.5
+                contact_reward -= 0.2
         rewards["contact_pattern"] = float(contact_reward)
 
-        # 8. Joint limits penalty (soft)
-        joint_positions = self.sensor_reader.get_joint_states()[:12]
-        limit_violations = float(np.sum(np.abs(joint_positions) > 2.5))
-        rewards["joint_limits"] = -1.0 * limit_violations
+        # 3. Mild stability penalties (to avoid catastrophic failures)
+        quat = self.sensor_reader.get_body_quaternion()
+        roll, pitch, _ = quat_to_euler(quat)
+        tilt_penalty = roll * roll + pitch * pitch
+        rewards["stability"] = -5 * float(tilt_penalty)
+
+        # Penalize deviation from initial standing height (measured after settle)
+        body_pos = self.sensor_reader.read_sensor("body_pos")
+        if self.initial_body_height is not None:
+            height_error = abs(float(body_pos[2]) - self.initial_body_height)
+            rewards["height"] = -0.1 * height_error
+        else:
+            rewards["height"] = 0.0
 
         total = float(sum(rewards.values()))
         return total, rewards
@@ -391,6 +370,11 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
                     apply_leg_angles(self.data, leg, result)
 
             mujoco.mj_step(self.model, self.data)
+
+        # Capture initial body height after settling
+        # This becomes our reference for height tracking during the episode
+        body_pos = self.sensor_reader.read_sensor("body_pos")
+        self.initial_body_height = float(body_pos[2])
 
         obs = self._get_observation()
         info: Dict[str, float] = {}

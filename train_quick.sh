@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-TIMESTEPS="${1:-5000000}"  # Default: 10M
-N_ENVS="${2:-16}"           # Default: 12
+TIMESTEPS="${1:-10000000}"  # Default: 10M
+N_ENVS="${2:-64}"           # Default: 12
 RUN_NAME="${3:-prod_fixed}" # Default: prod_fixed
 
 echo "========================================================================"
@@ -17,7 +17,7 @@ echo "Run name:        $RUN_NAME"
 echo "========================================================================"
 echo ""
 
-python3 train_residual_ppo_v2.py \
+python3 train_residual_ppo_v3.py \
     --total-timesteps "$TIMESTEPS" \
     --n-envs "$N_ENVS" \
     --run-name "$RUN_NAME" \

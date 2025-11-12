@@ -25,6 +25,10 @@ from typing import Optional
 import time
 
 import numpy as np
+try:
+    import mujoco  # type: ignore
+except Exception:  # pragma: no cover - optional dependency for ID lookup
+    mujoco = None  # type: ignore
 
 try:
     import gymnasium as gym  # noqa: F401
@@ -42,10 +46,18 @@ from envs.residual_walk_env import ResidualWalkEnv
 from gait_controller import GaitParameters
 
 
-def make_env() -> ResidualWalkEnv:
-    # Use rough/terrain training world and match Phase 2 gait params
+def make_env(residual_scale: float) -> ResidualWalkEnv:
+    """Create the playback environment.
+
+    Matches Phase 2 gait parameters and v3 training world. Allows overriding
+    residual scale to match training runs (default 0.10 in v3 training).
+    """
     gait = GaitParameters(body_height=0.05, step_length=0.06, step_height=0.04, cycle_time=0.8)
-    return ResidualWalkEnv(model_path="model/world_train.xml", gait_params=gait)
+    return ResidualWalkEnv(
+        model_path="model/world_train.xml",
+        gait_params=gait,
+        residual_scale=float(residual_scale),
+    )
 
 
 def load_vecnormalize(path: Optional[str | Path], base_vec) -> Optional[VecNormalize]:
@@ -68,6 +80,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--deterministic", action="store_true", help="Deterministic policy actions")
     p.add_argument("--baseline", action="store_true", help="Use zero actions (no residuals)")
     p.add_argument("--gl-backend", type=str, default="glfw", help="MUJOCO_GL backend (glfw/egl/osmesa)")
+    p.add_argument("--residual-scale", type=float, default=0.010, help="Residual action scale used during training (e.g., 0.10)")
     p.add_argument("--settle-steps", type=int, default=0, help="Override env settle steps during reset")
     return p.parse_args()
 
@@ -79,7 +92,10 @@ def main() -> int:
     os.environ["MUJOCO_GL"] = args.gl_backend
 
     # Build single-env VecEnv so we can reuse normalization and SB3 model
-    vec = DummyVecEnv([make_env])
+    vec = DummyVecEnv([lambda: make_env(args.residual_scale)])
+
+    # Log key playback parameters for sanity
+    print(f"[viewer] MUJOCO_GL={args.gl_backend}  residual_scale={args.residual_scale}")
 
     vn = load_vecnormalize(args.normalize, vec)
     if vn is not None:
@@ -126,12 +142,13 @@ def main() -> int:
     except Exception:
         pass
 
-    # Prepare camera follow if viewer present
+    # Prepare camera follow and body id lookup (works headless too)
     robot_body_id = None
-    if viewer is not None:
+    if mujoco is not None:
         try:
-            import mujoco
-            robot_body_id = mujoco.mj_name2id(base_env.model, mujoco.mjtObj.mjOBJ_BODY, "robot")
+            robot_body_id = mujoco.mj_name2id(
+                base_env.model, mujoco.mjtObj.mjOBJ_BODY, "robot"
+            )
         except Exception:
             robot_body_id = None
 
@@ -170,6 +187,20 @@ def main() -> int:
         remaining = dt - (time.time() - step_start)
         if remaining > 0:
             time.sleep(remaining)
+
+    # Print final body/world position before quitting
+    try:
+        if robot_body_id is not None:
+            final_pos = np.array(base_env.data.xpos[robot_body_id]).copy()
+            # World frame position in meters
+            print(f"[viewer] final 'robot' body world position: {final_pos}")
+        else:
+            # Fallback: root translation from qpos if available
+            if getattr(base_env.model, "nq", 0) >= 3:
+                root_pos = np.array(base_env.data.qpos[:3]).copy()
+                print(f"[viewer] final root qpos translation: {root_pos}")
+    except Exception:
+        pass
 
     if viewer is not None:
         viewer.close()
