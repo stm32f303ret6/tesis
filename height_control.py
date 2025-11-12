@@ -11,8 +11,9 @@ from PIL import Image
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image as RosImage
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Float32MultiArray
 from cv_bridge import CvBridge
+from scipy.spatial.transform import Rotation
 
 from gait_controller import DiagonalGaitController, GaitParameters
 from ik import solve_leg_ik_3dof
@@ -46,6 +47,7 @@ class RobotControlNode(Node):
 
         # Publishers
         self.camera_publisher = self.create_publisher(RosImage, 'robot_camera', 10)
+        self.body_state_publisher = self.create_publisher(Float32MultiArray, 'body_state', 10)
 
         # Subscribers
         self.movement_subscriber = self.create_subscription(
@@ -84,10 +86,42 @@ class RobotControlNode(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to publish image: {e}')
 
+    def publish_body_state(self, position, orientation_quat):
+        """Publish body position and orientation (as Euler angles) to ROS2 topic.
+
+        Args:
+            position: (x, y, z) position in meters
+            orientation_quat: (w, x, y, z) quaternion
+        """
+        try:
+            # Convert quaternion to Euler angles (roll, pitch, yaw)
+            rotation = Rotation.from_quat([orientation_quat[1], orientation_quat[2],
+                                          orientation_quat[3], orientation_quat[0]])
+            euler = rotation.as_euler('xyz', degrees=False)
+
+            # Create message: [x, y, z, roll, pitch, yaw]
+            msg = Float32MultiArray()
+            msg.data = [
+                float(position[0]),
+                float(position[1]),
+                float(position[2]),
+                float(euler[0]),  # roll
+                float(euler[1]),  # pitch
+                float(euler[2])   # yaw
+            ]
+
+            self.body_state_publisher.publish(msg)
+        except Exception as e:
+            self.get_logger().error(f'Failed to publish body state: {e}')
+
 
 model = mujoco.MjModel.from_xml_path("model/world_train.xml")
 data = mujoco.MjData(model)
 robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
+
+# Get sensor IDs
+body_pos_sensor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "body_pos")
+body_quat_sensor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "body_quat")
 
 
 def apply_leg_angles(ctrl: mujoco.MjData, leg: str, angles: Tuple[float, float, float]) -> None:
@@ -187,6 +221,15 @@ def main() -> None:
 
                 # Publish to ROS2 topic
                 ros_node.publish_camera_image(pixels)
+
+                # Read body sensors and publish body state
+                body_pos_adr = model.sensor_adr[body_pos_sensor_id]
+                body_quat_adr = model.sensor_adr[body_quat_sensor_id]
+
+                body_position = data.sensordata[body_pos_adr:body_pos_adr + 3]
+                body_orientation = data.sensordata[body_quat_adr:body_quat_adr + 4]
+
+                ros_node.publish_body_state(body_position, body_orientation)
 
                 last_capture_time = current_time
 

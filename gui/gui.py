@@ -10,7 +10,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image as RosImage
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Float32MultiArray
 from cv_bridge import CvBridge
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5.QtCore import QTimer, Qt
@@ -32,6 +32,13 @@ class GuiRosNode(Node):
             10
         )
 
+        self.body_state_subscriber = self.create_subscription(
+            Float32MultiArray,
+            'body_state',
+            self.body_state_callback,
+            10
+        )
+
         # Publishers
         self.movement_publisher = self.create_publisher(Int32, 'movement_command', 10)
 
@@ -40,6 +47,9 @@ class GuiRosNode(Node):
 
         # Store latest image
         self.latest_image = None
+
+        # Store latest body state [x, y, z, roll, pitch, yaw]
+        self.latest_body_state = None
 
         self.get_logger().info('GUI ROS Node initialized')
 
@@ -51,6 +61,13 @@ class GuiRosNode(Node):
             self.latest_image = cv_image
         except Exception as e:
             self.get_logger().error(f'Failed to convert image: {e}')
+
+    def body_state_callback(self, msg):
+        """Handle incoming body state data [x, y, z, roll, pitch, yaw]."""
+        try:
+            self.latest_body_state = list(msg.data)
+        except Exception as e:
+            self.get_logger().error(f'Failed to process body state: {e}')
 
     def publish_movement_command(self, command):
         """Publish movement command (0=no movement, 1=up, 2=down)."""
@@ -115,6 +132,11 @@ class MainWindow(QMainWindow):
         self.camera_timer = QTimer()
         self.camera_timer.timeout.connect(self.update_camera_display)
         self.camera_timer.start(100)  # Update display every 100ms (0.1 seconds)
+
+        # Setup timer for body state display update
+        self.body_state_timer = QTimer()
+        self.body_state_timer.timeout.connect(self.update_body_state_display)
+        self.body_state_timer.start(100)  # Update display every 100ms
 
         # Track current joystick state
         self.joystick_state = {
@@ -271,6 +293,25 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"Error updating camera display: {e}")
 
+    def update_body_state_display(self):
+        """Update body state labels with latest data from ROS2."""
+        if self.ros_node.latest_body_state is not None:
+            try:
+                # Extract data: [x, y, z, roll, pitch, yaw]
+                x, y, z, roll, pitch, yaw = self.ros_node.latest_body_state
+
+                # Update position labels (in meters)
+                self.body_x_label.setText(f"{x:.4f}")
+                self.body_y_label.setText(f"{y:.4f}")
+                self.body_z_label.setText(f"{z:.4f}")
+
+                # Update orientation labels (convert radians to degrees for display)
+                self.body_roll_label.setText(f"{np.degrees(roll):.2f}°")
+                self.body_pitch_label.setText(f"{np.degrees(pitch):.2f}°")
+                self.body_yaw_label.setText(f"{np.degrees(yaw):.2f}°")
+            except Exception as e:
+                print(f"Error updating body state display: {e}")
+
     def poll_joystick(self):
         """Poll joystick state and update UI."""
         if not self.joystick:
@@ -349,6 +390,7 @@ class MainWindow(QMainWindow):
         self.joystick_timer.stop()
         self.ros_timer.stop()
         self.camera_timer.stop()
+        self.body_state_timer.stop()
         if self.joystick:
             self.joystick.quit()
         pygame.quit()
