@@ -115,7 +115,7 @@ class RobotControlNode(Node):
             self.get_logger().error(f'Failed to publish body state: {e}')
 
 
-model = mujoco.MjModel.from_xml_path("model/world_train.xml")
+model = mujoco.MjModel.from_xml_path("model/world.xml")
 data = mujoco.MjData(model)
 robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
 

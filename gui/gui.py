@@ -16,6 +16,8 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.uic import loadUi
+import pyqtgraph as pg
+from collections import deque
 
 
 class GuiRosNode(Node):
@@ -121,7 +123,7 @@ class MainWindow(QMainWindow):
         # Setup timer for joystick polling
         self.joystick_timer = QTimer()
         self.joystick_timer.timeout.connect(self.poll_joystick)
-        self.joystick_timer.start(50)  # Poll every 50ms
+        self.joystick_timer.start(10)  # Poll every 50ms
 
         # Setup timer for ROS2 spin
         self.ros_timer = QTimer()
@@ -149,6 +151,12 @@ class MainWindow(QMainWindow):
         # Track last published movement command
         self.last_movement_command = 0
 
+        # Initialize XY position buffer (size 50) and plot
+        self.xy_buffer_size = 50
+        self.x_buffer = deque(maxlen=self.xy_buffer_size)
+        self.y_buffer = deque(maxlen=self.xy_buffer_size)
+        self.setup_xy_plot()
+
     def setup_ui(self):
         """Initialize UI elements."""
         # Hide operation tab initially
@@ -160,6 +168,34 @@ class MainWindow(QMainWindow):
 
         # Set default brown images for arrow labels
         self.set_arrow_images()
+
+    def setup_xy_plot(self):
+        """Setup the XY position plot widget."""
+        # Create plot widget
+        self.xy_plot_widget = pg.PlotWidget()
+        self.xy_plot_widget.setBackground('w')
+        self.xy_plot_widget.setTitle("Robot XY Position", color='k', size='12pt')
+        self.xy_plot_widget.setLabel('left', 'Y Position (m)', color='k')
+        self.xy_plot_widget.setLabel('bottom', 'X Position (m)', color='k')
+        self.xy_plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        self.xy_plot_widget.setMinimumSize(300, 300)
+
+        # Create the plot line - using scatter plot instead to avoid line artifacts
+        self.xy_plot_scatter = pg.ScatterPlotItem(
+            size=8,
+            pen=pg.mkPen(color='b', width=1),
+            brush=pg.mkBrush(0, 100, 255, 200)
+        )
+        self.xy_plot_widget.addItem(self.xy_plot_scatter)
+
+        # Also create a line plot for the trail
+        self.xy_plot_line = self.xy_plot_widget.plot(
+            pen=pg.mkPen(color='b', width=1.5, style=pg.QtCore.Qt.SolidLine),
+            symbol=None
+        )
+
+        # Add plot widget to horizontalLayout_9 (next to 'Cuerpo' group)
+        self.horizontalLayout_9.addWidget(self.xy_plot_widget)
 
     def set_arrow_images(self, up='brown', down='brown', left='brown', right='brown'):
         """Set arrow images based on state."""
@@ -309,6 +345,21 @@ class MainWindow(QMainWindow):
                 self.body_roll_label.setText(f"{np.degrees(roll):.2f}°")
                 self.body_pitch_label.setText(f"{np.degrees(pitch):.2f}°")
                 self.body_yaw_label.setText(f"{np.degrees(yaw):.2f}°")
+
+                # Update XY plot buffer and redraw
+                self.x_buffer.append(x)
+                self.y_buffer.append(y)
+
+                # Update plot with buffered data
+                if len(self.x_buffer) > 0:
+                    x_data = list(self.x_buffer)
+                    y_data = list(self.y_buffer)
+
+                    # Update the line trail
+                    self.xy_plot_line.setData(x_data, y_data)
+
+                    # Update scatter plot points
+                    self.xy_plot_scatter.setData(x_data, y_data)
             except Exception as e:
                 print(f"Error updating body state display: {e}")
 
