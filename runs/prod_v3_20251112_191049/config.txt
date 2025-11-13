@@ -1,0 +1,22 @@
+Training Configuration (v3)
+========================================
+total_timesteps: 12000000
+n_envs: 80
+vec_env_backend: subproc
+n_steps: 4096
+batch_size: 2048
+learning_rate: 0.001
+gamma: 0.99
+gae_lambda: 0.95
+n_epochs: 5
+ent_coef: 0.01
+clip_range: 0.2
+max_grad_norm: 1.0
+network_size: small
+residual_scale: 0.015
+run_name: prod_v3
+log_root: runs
+checkpoint_freq: 500000
+randomize: False
+device: auto
+seed: None

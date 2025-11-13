@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--deterministic", action="store_true", help="Deterministic policy actions")
     p.add_argument("--baseline", action="store_true", help="Use zero actions (no residuals)")
     p.add_argument("--gl-backend", type=str, default="glfw", help="MUJOCO_GL backend (glfw/egl/osmesa)")
-    p.add_argument("--residual-scale", type=float, default=0.010, help="Residual action scale used during training (e.g., 0.10)")
+    p.add_argument("--residual-scale", type=float, default=0.01, help="Residual action scale used during training (e.g., 0.10)")
     p.add_argument("--settle-steps", type=int, default=0, help="Override env settle steps during reset")
     return p.parse_args()
 
@@ -124,6 +124,10 @@ def main() -> int:
         try:
             import mujoco.viewer as mj_viewer  # type: ignore[attr-defined]
             viewer = mj_viewer.launch_passive(base_env.model, base_env.data)
+            # Configure camera: close follow view
+            viewer.cam.distance = 0.5
+            viewer.cam.azimuth = 100
+            viewer.cam.elevation = -10
         except Exception:
             print("[WARN] MuJoCo viewer unavailable or failed to launch; running headless.")
             viewer = None

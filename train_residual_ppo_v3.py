@@ -45,16 +45,16 @@ class TrainingConfig:
     total_timesteps: int = 2_000_000 # 20_000_000
 
     # Parallelism
-    n_envs: int = 50  # Use 16 to match a 16-core CPU
+    n_envs: int = 80  # Use 16 to match a 16-core CPU
     vec_env_backend: str = "subproc"  # "subproc" or "dummy"
 
-    # PPO hyperparameters (go2-inspired)
+    # PPO hyperparameters
     n_steps: int = 4096
-    batch_size: int = 128
+    batch_size: int = 2048
     learning_rate: float = 1e-4
     gamma: float = 0.99
     gae_lambda: float = 0.95
-    n_epochs: int = 5
+    n_epochs: int = 10
     ent_coef: float = 0.01
     clip_range: float = 0.2
     max_grad_norm: float = 1.0
@@ -92,7 +92,7 @@ def make_env(log_dir: Path, rank: int, cfg: TrainingConfig):
             cycle_time=0.8
         )
         env = ResidualWalkEnv(
-            model_path="model/world_train.xml",
+            model_path="model/world.xml",
             gait_params=gait,
             residual_scale=cfg.residual_scale, 
             max_episode_steps=5000,
@@ -118,7 +118,7 @@ def get_network_architecture(size: str) -> dict:
     architectures = {
         "small": [128, 64],
         "medium": [256, 128, 64],
-        "large": [512, 256, 128],  # go2 architecture
+        "large": [512, 256, 128],  
     }
 
     net_arch = architectures[size]

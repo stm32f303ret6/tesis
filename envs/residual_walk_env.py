@@ -29,7 +29,7 @@ from controllers.bezier_gait_residual import BezierGaitResidualController
 from ik import solve_leg_ik_3dof
 from utils.control_utils import apply_leg_angles
 from utils.sensor_utils import SensorReader
-
+from scipy.spatial.transform import Rotation as R
 
 # Keep in sync with height_control.py
 IK_PARAMS = dict(L1=0.045, L2=0.06, base_dist=0.021, mode=2)
@@ -53,27 +53,18 @@ def quat_to_rotation_matrix(quat: np.ndarray) -> np.ndarray:
     return R
 
 
-def quat_to_euler(quat: np.ndarray) -> Tuple[float, float, float]:
-    """Return roll, pitch, yaw from MuJoCo quaternion [w, x, y, z]."""
-    w, x, y, z = [float(q) for q in quat]
-    # Roll (x-axis rotation)
-    sinr_cosp = 2 * (w * x + y * z)
-    cosr_cosp = 1 - 2 * (x * x + y * y)
-    roll = math.atan2(sinr_cosp, cosr_cosp)
-
-    # Pitch (y-axis rotation)
-    sinp = 2 * (w * y - z * x)
-    if abs(sinp) >= 1:
-        pitch = math.copysign(math.pi / 2, sinp)
-    else:
-        pitch = math.asin(sinp)
-
-    # Yaw (z-axis rotation)
-    siny_cosp = 2 * (w * z + x * y)
-    cosy_cosp = 1 - 2 * (y * y + z * z)
-    yaw = math.atan2(siny_cosp, cosy_cosp)
-
+def quat_to_euler(quat: np.ndarray, degrees) -> Tuple[float, float, float]: # quat w,x,y,z ordering
+    """
+    Convert a MuJoCo quaternion [w, x, y, z] to Euler angles (roll, pitch, yaw) in radians.
+    """
+    # SciPy expects [x, y, z, w], so reorder
+    quat_scipy = [quat[1], quat[2], quat[3], quat[0]]
+    
+    r = R.from_quat(quat_scipy)
+    roll, pitch, yaw = r.as_euler('xyz', degrees=degrees)
+    
     return roll, pitch, yaw
+
 
 
 def euler_to_quat(roll: float, pitch: float, yaw: float) -> np.ndarray:
@@ -289,9 +280,9 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
 
         # 3. Mild stability penalties (to avoid catastrophic failures)
         quat = self.sensor_reader.get_body_quaternion()
-        roll, pitch, _ = quat_to_euler(quat)
-        tilt_penalty = roll * roll + pitch * pitch
-        rewards["stability"] = -5 * float(tilt_penalty)
+        roll, pitch, yaw = quat_to_euler(quat, True)
+        tilt_penalty = roll * roll + pitch * pitch + yaw * yaw
+        rewards["stability"] = -1 * float(tilt_penalty)
 
         # Penalize deviation from initial standing height (measured after settle)
         body_pos = self.sensor_reader.read_sensor("body_pos")
@@ -300,6 +291,10 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
             rewards["height"] = -0.1 * height_error
         else:
             rewards["height"] = 0.0
+            
+        # Penalize lateral (y-axis) deviation from initial position (secondary lateral control)
+        lateral_error = abs(float(body_pos[1]))
+        rewards["lateral_stability"] = -5.0 * lateral_error
 
         total = float(sum(rewards.values()))
         return total, rewards
@@ -308,7 +303,7 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         """Return (terminated, truncated)."""
         body_pos = self.sensor_reader.read_sensor("body_pos")
         quat = self.sensor_reader.get_body_quaternion()
-        roll, pitch, _ = quat_to_euler(quat)
+        roll, pitch, _ = quat_to_euler(quat, False)
         terminated = bool(
             (float(body_pos[2]) < 0.03)
             or (abs(roll) > math.pi / 3)
