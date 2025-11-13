@@ -42,7 +42,7 @@ from gait_controller import GaitParameters
 class TrainingConfig:
     """Centralized training configuration (edit here to change settings)."""
     # Duration
-    total_timesteps: int = 2_000_000 # 20_000_000
+    total_timesteps: int = 3_000_000 # 20_000_000
 
     # Parallelism
     n_envs: int = 80  # Use 16 to match a 16-core CPU
@@ -61,7 +61,7 @@ class TrainingConfig:
 
     # Network and env
     network_size: str = "large"  # small | medium | large
-    residual_scale: float = 0.010
+    residual_scale: float = 0.01
 
     # Logging/saving
     run_name: str = "prod_v3"
@@ -92,7 +92,7 @@ def make_env(log_dir: Path, rank: int, cfg: TrainingConfig):
             cycle_time=0.8
         )
         env = ResidualWalkEnv(
-            model_path="model/world.xml",
+            model_path="model/world_train.xml",
             gait_params=gait,
             residual_scale=cfg.residual_scale, 
             max_episode_steps=5000,

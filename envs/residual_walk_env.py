@@ -255,7 +255,7 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         linvel = self.sensor_reader.read_sensor("body_linvel")
         forward_vel = float(linvel[0])
         vel_error = abs(forward_vel - self.expected_velocity)
-        rewards["forward_velocity"] = 5.0 * (1.0 - vel_error)
+        rewards["forward_velocity"] = 300.0 * (1.0 - vel_error)
 
         # 2. Foot contact pattern (encourage proper gait)
         foot_contacts = self._get_foot_contact_forces()
@@ -282,19 +282,14 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         quat = self.sensor_reader.get_body_quaternion()
         roll, pitch, yaw = quat_to_euler(quat, True)
         tilt_penalty = roll * roll + pitch * pitch + yaw * yaw
-        rewards["stability"] = -1 * float(tilt_penalty)
+        rewards["stability"] = -3.0 * float(tilt_penalty)
 
-        # Penalize deviation from initial standing height (measured after settle)
+
         body_pos = self.sensor_reader.read_sensor("body_pos")
-        if self.initial_body_height is not None:
-            height_error = abs(float(body_pos[2]) - self.initial_body_height)
-            rewards["height"] = -0.1 * height_error
-        else:
-            rewards["height"] = 0.0
             
         # Penalize lateral (y-axis) deviation from initial position (secondary lateral control)
         lateral_error = abs(float(body_pos[1]))
-        rewards["lateral_stability"] = -5.0 * lateral_error
+        rewards["lateral_stability"] = -1.0 * lateral_error
 
         total = float(sum(rewards.values()))
         return total, rewards
@@ -305,8 +300,7 @@ class ResidualWalkEnv(gym.Env):  # type: ignore[misc]
         quat = self.sensor_reader.get_body_quaternion()
         roll, pitch, _ = quat_to_euler(quat, False)
         terminated = bool(
-            (float(body_pos[2]) < 0.03)
-            or (abs(roll) > math.pi / 3)
+            (abs(roll) > math.pi / 3)
             or (abs(pitch) > math.pi / 3)
         )
         truncated = bool(self.step_count >= self.max_episode_steps)
