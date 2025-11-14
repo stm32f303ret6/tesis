@@ -35,7 +35,7 @@
       <geom name="box_geom" type="box" pos="0 0 -0.01" size="0.0375 0.04 0.01" rgba="0.1 0.1 0.8 1"/>
 
       <!-- Camera sensor at (0,0,0.2) looking at +X -->
-      <camera name="robot_camera" pos="0 0 0.2" euler="1.57079 1.57079  0" fovy="60"/>
+      <camera name="robot_camera" pos="0 0 0.3" euler="0 0 3.1416" fovy="60"/>
 
       <!-- =========================
            FRONT LEFT
