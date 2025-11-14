@@ -1,198 +1,69 @@
 @startuml Estructuras_de_Datos_Principales
 !theme plain
 skinparam classAttributeIconSize 0
-skinparam monochrome false
-skinparam backgroundColor #FFFFFF
 skinparam roundcorner 10
+skinparam shadowing false
 
-title Diagrama UML: Estructuras de Datos Principales\n(Almacenamiento en Memoria)
+title Estructuras de Datos para Residual PPO
 
-package "Estructuras de Observación" #TECHNOLOGY {
+package "Observación y Acción" #EFEFEF {
     class ObservationVector <<dataclass>> {
-        + {field} body_position: ndarray[3]
-        + {field} body_orientation: ndarray[4]
-        + {field} body_linear_velocity: ndarray[3]
-        + {field} body_angular_velocity: ndarray[3]
-        + {field} joint_positions: ndarray[12]
-        + {field} joint_velocities: ndarray[12]
-        + {field} foot_positions: ndarray[12]
-        + {field} foot_velocities: ndarray[12]
-        + {field} foot_contacts: ndarray[4]
+        + body_state: ndarray[13]
+        + joint_state: ndarray[24]
+        + foot_state: ndarray[24]
+        + contacts: ndarray[4]
         --
-        + get_dimension(): int {return 65}
-        + to_flat_array(): ndarray[65]
-        + from_flat_array(arr): ObservationVector
+        + dimension(): int
     }
 
-    note right of ObservationVector
-        **Dimensión total: 65D**
-
-        Componentes:
-        - Estado del cuerpo: 13D
-        - Estado articular: 24D
-        - Estado de patas: 24D
-        - Contactos: 4D
-
-        Unidades:
-        - Posiciones: metros
-        - Velocidades: m/s, rad/s
-        - Quaternion: [w,x,y,z]
-    end note
-}
-
-package "Estructuras de Acción" #STRATEGY {
     class ActionVector <<dataclass>> {
-        + {field} FL_residual: ndarray[3]
-        + {field} FR_residual: ndarray[3]
-        + {field} RL_residual: ndarray[3]
-        + {field} RR_residual: ndarray[3]
+        + residuals: Dict[str, ndarray[3]]
+        + scale: float
         --
-        + get_dimension(): int {return 12}
-        + to_dict(): Dict[str, ndarray]
-        + from_normalized(action: ndarray[12], scale: float): ActionVector
-        + clip(max_scale: float): void
+        + dimension(): int
     }
-
-    note right of ActionVector
-        **Dimensión total: 12D**
-
-        Estructura:
-        - 4 patas × 3 DOF
-        - Cada pata: [Δx, Δy, Δz]
-        - Rango: [-1, 1] normalizado
-        - Escala típica: 0.01 m
-    end note
 }
 
-package "Parámetros de Control" #APPLICATION {
+package "Parámetros y Control" #E7F0FF {
     class GaitParameters <<dataclass>> {
-        + {field} body_height: float
-        + {field} step_length: float
-        + {field} step_height: float
-        + {field} cycle_time: float
-        + {field} swing_shape: float
-        + {field} lateral_offsets: Dict[str, float]
-        --
-        + get_expected_velocity(): float
-        + validate(): bool
+        + body_height: float
+        + step_length: float
+        + step_height: float
+        + cycle_time: float
     }
 
-    note right of GaitParameters
-        **Configuración de marcha diagonal**
-
-        Valores típicos:
-        - body_height: 0.05 m
-        - step_length: 0.06 m
-        - step_height: 0.04 m
-        - cycle_time: 0.8 s
-
-        Velocidad esperada:
-        v = step_length / cycle_time
-    end note
-}
-
-package "Buffer de Experiencias" #IMPLEMENTATION {
-    class RolloutBuffer <<dataclass>> {
-        + {field} observations: ndarray[n_steps, n_envs, 65]
-        + {field} actions: ndarray[n_steps, n_envs, 12]
-        + {field} rewards: ndarray[n_steps, n_envs, 1]
-        + {field} values: ndarray[n_steps, n_envs, 1]
-        + {field} log_probs: ndarray[n_steps, n_envs, 1]
-        + {field} dones: ndarray[n_steps, n_envs, 1]
-        + {field} advantages: ndarray[n_steps, n_envs, 1]
-        + {field} returns: ndarray[n_steps, n_envs, 1]
-        --
-        + {field} n_steps: int = 4096
-        + {field} n_envs: int = 80
-        + {field} current_step: int
-        --
-        + add(obs, action, reward, value, log_prob, done): void
-        + compute_advantages(gamma, gae_lambda): void
-        + get_memory_usage(): int {≈ 104 MB}
-        + reset(): void
-    }
-
-    note right of RolloutBuffer
-        **Almacenamiento de trayectorias**
-
-        Capacidad:
-        - 4096 pasos × 80 entornos
-        - = 327,680 transiciones
-
-        Memoria:
-        - ~26M valores float32
-        - ≈ 104 MB por buffer
-
-        Uso:
-        - Decorrela experiencias
-        - Permite mini-batching
-        - Facilita paralelización
-    end note
-}
-
-package "Configuración de Entrenamiento" #BUSINESS {
     class TrainingConfig <<dataclass>> {
-        + {field} total_timesteps: int
-        + {field} n_envs: int
-        + {field} n_steps: int
-        + {field} batch_size: int
-        + {field} learning_rate: float
-        + {field} gamma: float
-        + {field} gae_lambda: float
-        + {field} n_epochs: int
-        + {field} ent_coef: float
-        + {field} clip_range: float
-        + {field} max_grad_norm: float
-        + {field} network_size: str
-        + {field} residual_scale: float
-        + {field} run_name: str
-        + {field} checkpoint_freq: int
-        --
-        + validate(): bool
-        + save_to_file(path): void
-        + load_from_file(path): TrainingConfig
+        + total_timesteps: int
+        + n_envs: int
+        + batch_size: int
+        + learning_rate: float
+        + residual_scale: float
     }
-
-    note right of TrainingConfig
-        **Hiperparámetros PPO**
-
-        Valores por defecto:
-        - n_envs: 80
-        - n_steps: 4096
-        - batch_size: 2048
-        - learning_rate: 1e-4
-        - gamma: 0.99
-        - n_epochs: 10
-
-        Red neuronal:
-        - "large": [512, 256, 128]
-        - Activación: ELU
-    end note
 }
 
-package "Métricas de Entrenamiento" #BUSINESS {
+package "Almacenamiento y Métricas" #FCEFD6 {
+    class RolloutBuffer <<dataclass>> {
+        + observations: ndarray[n_steps, n_envs, 65]
+        + actions: ndarray[n_steps, n_envs, 12]
+        + rewards: ndarray[n_steps, n_envs, 1]
+        + advantages: ndarray[n_steps, n_envs, 1]
+        + returns: ndarray[n_steps, n_envs, 1]
+    }
+
     class TrainingMetrics <<dataclass>> {
-        + {field} episode_rewards: List[float]
-        + {field} episode_lengths: List[int]
-        + {field} policy_loss: List[float]
-        + {field} value_loss: List[float]
-        + {field} entropy_loss: List[float]
-        + {field} approx_kl: List[float]
-        + {field} clip_fraction: List[float]
-        + {field} reward_components: Dict[str, List[float]]
-        --
-        + add_episode(reward, length): void
-        + add_training_step(losses): void
-        + get_statistics(): Dict[str, float]
-        + save_to_tensorboard(writer, step): void
+        + episode_reward: float
+        + episode_length: int
+        + policy_loss: float
+        + value_loss: float
     }
 }
 
-' Relaciones
-ObservationVector "1" --> "1" RolloutBuffer : almacenado en >
-ActionVector "1" --> "1" RolloutBuffer : almacenado en >
-GaitParameters "1" --> "1" TrainingConfig : configura >
-TrainingConfig "1" --> "1" RolloutBuffer : parametriza >
-RolloutBuffer "1" --> "*" TrainingMetrics : genera >
+RolloutBuffer o-- ObservationVector : almacena
+RolloutBuffer o-- ActionVector : almacena
+TrainingConfig ..> RolloutBuffer : dimensiona
+TrainingConfig ..> GaitParameters : fija límites
+TrainingMetrics ..> TrainingConfig : resume
+ActionVector ..> GaitParameters : aplica
+ObservationVector ..> GaitParameters : valida altura
 
 @enduml
