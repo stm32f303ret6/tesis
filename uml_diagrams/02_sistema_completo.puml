@@ -1,0 +1,200 @@
+@startuml Sistema_Completo_RL
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam roundcorner 10
+
+title Diagrama UML: Sistema Completo de Aprendizaje por Refuerzo\n(Clases Principales y Relaciones)
+
+package "Capa de Simulación" #DDDDDD {
+    class MuJoCoSimulator {
+        - model: MjModel
+        - data: MjData
+        --
+        + step(): void
+        + reset(): void
+        + get_state(): SimState
+        + apply_control(ctrl: ndarray): void
+    }
+
+    note right of MuJoCoSimulator
+        **Motor de física**
+        Responsable de:
+        - Simular dinámica del robot
+        - Gestionar contactos
+        - Integrar ecuaciones de movimiento
+    end note
+}
+
+package "Capa de Control" #TECHNOLOGY {
+    class BezierGaitResidualController {
+        - base_controller: DiagonalGaitController
+        - residual_scale: float
+        --
+        + reset(): void
+        + update_with_residuals(dt, residuals): Dict[str, ndarray]
+        + get_phase_info(): Dict[str, float]
+        + get_swing_stance_flags(): Dict[str, int]
+    }
+
+    class DiagonalGaitController {
+        - params: GaitParameters
+        - state_duration: float
+        - phase_elapsed: float
+        - active_swing_pair: Tuple[str, str]
+        - active_stance_pair: Tuple[str, str]
+        - swing_curve: bezier.Curve
+        - machine: Machine
+        --
+        + reset(): void
+        + update(dt): Dict[str, ndarray]
+        - _evaluate_swing_curve(leg, tau): ndarray
+        - _evaluate_stance_path(leg, tau): ndarray
+        - _update_active_pair(): void
+    }
+
+    class IKSolver {
+        {static} + solve_leg_ik_3dof(target, L1, L2, base_dist, mode): Tuple
+        {static} + parallel_scara_ik(x, z, L1, L2, base_dist, mode): Tuple
+        {static} + solve_2link_ik(x, z, L1, L2): Tuple
+    }
+
+    class ControlUtils {
+        {static} + apply_leg_angles(data, leg, angles): void
+    }
+
+    BezierGaitResidualController *-- DiagonalGaitController
+    BezierGaitResidualController ..> IKSolver : usa >
+    ControlUtils ..> MuJoCoSimulator : modifica >
+}
+
+package "Capa de Aprendizaje" #STRATEGY {
+    class ResidualWalkEnv {
+        - model: MjModel
+        - data: MjData
+        - controller: BezierGaitResidualController
+        - sensor_reader: SensorReader
+        - residual_scale: float
+        - max_episode_steps: int
+        - settle_steps: int
+        - step_count: int
+        - previous_action: ndarray
+        - initial_body_height: float
+        --
+        + reset(seed, options): Tuple[ndarray, dict]
+        + step(action): Tuple[ndarray, float, bool, bool, dict]
+        - _get_observation(): ndarray
+        - _process_action(action): Dict[str, ndarray]
+        - _compute_reward(): Tuple[float, Dict]
+        - _check_termination(): Tuple[bool, bool]
+        - _get_foot_contact_forces(): Dict[str, float]
+    }
+
+    class SensorReader {
+        - model: MjModel
+        - data: MjData
+        --
+        + read_sensor(name): ndarray
+        + get_body_state(): ndarray
+        + get_body_quaternion(): ndarray
+        + get_joint_states(): ndarray
+        + get_foot_positions(): ndarray
+        + get_foot_velocities(): ndarray
+    }
+
+    class PPOAgent {
+        - policy: ActorCriticPolicy
+        - env: VecEnv
+        - n_steps: int
+        - batch_size: int
+        - learning_rate: float
+        - gamma: float
+        - gae_lambda: float
+        - n_epochs: int
+        - ent_coef: float
+        - clip_range: float
+        - rollout_buffer: RolloutBuffer
+        --
+        + learn(total_timesteps): void
+        + predict(observation, deterministic): Tuple
+        + collect_rollouts(): bool
+        + train(): void
+        + save(path): void
+        + load(path): PPOAgent
+    }
+
+    class ActorCriticPolicy {
+        - actor_net: MLP
+        - critic_net: MLP
+        - action_dist: DiagGaussianDistribution
+        --
+        + forward(obs): Tuple[Action, Value, LogProb]
+        + evaluate_actions(obs, actions): Tuple
+        + predict_values(obs): Value
+        + get_distribution(obs): Distribution
+    }
+
+    class MLP {
+        - layers: List[nn.Linear]
+        - activation: nn.Module
+        --
+        + forward(x): Tensor
+    }
+
+    ResidualWalkEnv *-- BezierGaitResidualController
+    ResidualWalkEnv *-- SensorReader
+    ResidualWalkEnv ..> MuJoCoSimulator : interactúa >
+    PPOAgent *-- ActorCriticPolicy
+    PPOAgent o-- ResidualWalkEnv
+    ActorCriticPolicy *-- "2" MLP : actor + critic
+}
+
+package "Capa de Gestión" #BUSINESS {
+    class VecEnv {
+        - envs: List[ResidualWalkEnv]
+        - n_envs: int
+        --
+        + reset(): ndarray
+        + step_async(actions): void
+        + step_wait(): Tuple
+        + close(): void
+    }
+
+    class VecNormalize {
+        - venv: VecEnv
+        - obs_rms: RunningMeanStd
+        - ret_rms: RunningMeanStd
+        - clip_obs: float
+        - clip_reward: float
+        --
+        + normalize_obs(obs): ndarray
+        + normalize_reward(reward): float
+        + update_statistics(obs, reward): void
+    }
+
+    class CheckpointCallback {
+        - save_freq: int
+        - save_path: str
+        --
+        + on_step(): bool
+        + _on_training_end(): void
+    }
+
+    class TensorBoardLogger {
+        - log_dir: str
+        - writer: SummaryWriter
+        --
+        + record(key, value, step): void
+        + dump(): void
+    }
+
+    VecNormalize o-- VecEnv
+    VecEnv *-- "*" ResidualWalkEnv
+    PPOAgent ..> VecNormalize : entrena con >
+    PPOAgent ..> CheckpointCallback : usa >
+    PPOAgent ..> TensorBoardLogger : registra en >
+}
+
+' Relaciones de flujo de datos
+note "**Flujo de Datos:**\n1. VecEnv → observación\n2. PPOAgent → acción\n3. ResidualWalkEnv → reward\n4. RolloutBuffer → experiencias\n5. PPOAgent.train() → actualiza policy" as FlowNote
+
+@enduml

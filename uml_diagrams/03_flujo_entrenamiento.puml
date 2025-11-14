@@ -1,0 +1,194 @@
+@startuml Flujo_de_Entrenamiento
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam roundcorner 10
+
+title Diagrama UML de Secuencia: Ciclo de Entrenamiento RL\n(Una iteración de PPO)
+
+actor Usuario
+participant "TrainingScript" as Script
+participant "PPOAgent" as PPO
+participant "VecNormalize" as VecNorm
+participant "VecEnv\n(80 envs)" as VecEnv
+participant "ResidualWalkEnv" as Env
+participant "ActorCriticPolicy\n(Red Neuronal)" as Policy
+participant "BezierController\n+ Residual" as Controller
+participant "MuJoCo\nSimulator" as MuJoCo
+participant "RolloutBuffer" as Buffer
+
+Usuario -> Script: python train_residual_ppo_v3.py
+activate Script
+
+Script -> Script: Leer TrainingConfig\n(hiperparámetros)
+Script -> VecEnv: Crear 80 entornos
+activate VecEnv
+VecEnv -> Env: new(model_path, gait_params, ...)
+activate Env
+Env -> MuJoCo: Cargar modelo XML
+activate MuJoCo
+MuJoCo --> Env: MjModel, MjData
+Env -> Controller: new(GaitParameters)
+activate Controller
+Controller --> Env: Controlador inicializado
+Env --> VecEnv: env[0..79] creados
+deactivate Env
+VecEnv --> Script: VecEnv(80)
+deactivate VecEnv
+
+Script -> VecNorm: Envolver VecEnv
+activate VecNorm
+VecNorm --> Script: VecNormalize(VecEnv)
+deactivate VecNorm
+
+Script -> PPO: new(policy="MlpPolicy",\nenv=VecNormalize,\n**config)
+activate PPO
+PPO -> Policy: Crear redes Actor-Crítico\n[512,256,128] con ELU
+activate Policy
+Policy --> PPO: Redes inicializadas
+PPO -> Buffer: Crear RolloutBuffer\n(4096, 80)
+activate Buffer
+Buffer --> PPO: Buffer creado
+PPO --> Script: PPOAgent listo
+deactivate Buffer
+
+Script -> PPO: learn(total_timesteps=3M)
+
+== Fase 1: Recolección de Experiencias (n_steps=4096) ==
+
+loop Para cada paso t = 0..4095
+    PPO -> VecNorm: reset() / get_obs()
+    activate VecNorm
+    VecNorm -> VecEnv: get_observations()
+    activate VecEnv
+    VecEnv -> Env: _get_observation()
+    activate Env
+    Env -> MuJoCo: Leer sensores\n(pos, vel, contactos)
+    MuJoCo --> Env: Estado (65D)
+    Env --> VecEnv: obs[env_id] (65D)
+    deactivate Env
+    VecEnv --> VecNorm: obs_all (80, 65)
+    deactivate VecEnv
+    VecNorm -> VecNorm: Normalizar:\nobs_norm = (obs - μ) / σ
+    VecNorm --> PPO: obs_normalized (80, 65)
+    deactivate VecNorm
+
+    PPO -> Policy: forward(obs_norm)
+    activate Policy
+    Policy -> Policy: Actor(obs) → μ, σ\nCrítico(obs) → V(s)
+    Policy -> Policy: Sample: a ~ N(μ, σ²)
+    Policy --> PPO: action (80, 12),\nvalue (80, 1),\nlog_prob (80, 1)
+    deactivate Policy
+
+    PPO -> VecEnv: step(action)
+    activate VecEnv
+    VecEnv -> Env: step(action[env_id])
+    activate Env
+
+    Env -> Env: _process_action():\nConvertir a residuales\npor pata
+    Env -> Controller: update_with_residuals(\ndt, residuals)
+    activate Controller
+    Controller -> Controller: target_base = gait.update(dt)
+    Controller -> Controller: target_final = base + residual
+    Controller --> Env: targets_finales\n{"FL":[x,y,z], ...}
+    deactivate Controller
+
+    Env -> Env: IKSolver.solve_leg_ik_3dof()\npara cada pata
+    Env -> MuJoCo: apply_control(joint_angles)
+    MuJoCo -> MuJoCo: mj_step()\n(simular física)
+    MuJoCo --> Env: Nuevo estado s_{t+1}
+
+    Env -> Env: _compute_reward():\nvelocity + contact +\nstability + lateral
+    Env -> Env: _check_termination():\nroll/pitch > π/3 ?
+
+    Env --> VecEnv: obs' (65D), reward,\nterminated, truncated, info
+    deactivate Env
+    VecEnv --> PPO: obs' (80,65), r (80,1),\ndone (80,1), info
+    deactivate VecEnv
+
+    PPO -> Buffer: add(obs, action, reward,\nvalue, log_prob, done)
+    activate Buffer
+    Buffer -> Buffer: Almacenar transición\nen posición [t, :]
+    Buffer --> PPO: OK
+    deactivate Buffer
+
+    note right
+        Después de 4096 pasos:
+        Buffer contiene 327,680
+        transiciones (4096 × 80)
+    end note
+end
+
+== Fase 2: Cálculo de Ventajas ==
+
+PPO -> Buffer: compute_advantages(\ngamma=0.99,\ngae_lambda=0.95)
+activate Buffer
+Buffer -> Buffer: Para t = 4095..0:\nδ_t = r_t + γV(s_{t+1}) - V(s_t)\nA_t = δ_t + γλA_{t+1}
+Buffer -> Buffer: returns = advantages + values
+Buffer --> PPO: Ventajas y retornos calculados
+deactivate Buffer
+
+== Fase 3: Optimización (n_epochs=10) ==
+
+loop Por cada época e = 0..9
+    PPO -> Buffer: Obtener datos\n(obs, actions, advantages, returns)
+    activate Buffer
+    Buffer --> PPO: Datos completos\n(327,680 transiciones)
+    deactivate Buffer
+
+    PPO -> PPO: Barajar índices\nDividir en mini-batches\n(batch_size=2048)
+
+    loop Por cada mini-batch (160 batches)
+        PPO -> Policy: evaluate_actions(\nobs_batch, actions_batch)
+        activate Policy
+        Policy -> Policy: Forward pass:\nμ, σ = Actor(obs)\nV = Critic(obs)
+        Policy -> Policy: Calcular:\nnew_log_prob = log π(a|s)\nentropy = H(π)
+        Policy --> PPO: new_log_prob, values_pred,\nentropy
+        deactivate Policy
+
+        PPO -> PPO: **Calcular pérdidas:**\nratio = exp(new_log_prob - old_log_prob)\npolicy_loss = -min(ratio·A, clip(ratio)·A)\nvalue_loss = MSE(V_pred, returns)\nentropy_loss = -H(π)
+
+        PPO -> PPO: total_loss = policy_loss\n+ 0.5·value_loss\n+ 0.01·entropy_loss
+
+        PPO -> PPO: Backpropagation
+        PPO -> Policy: Actualizar pesos θ\n(con grad clipping)
+        activate Policy
+        Policy -> Policy: optimizer.step()
+        Policy --> PPO: Pesos actualizados
+        deactivate Policy
+    end
+end
+
+== Fase 4: Logging y Checkpointing ==
+
+PPO -> PPO: Calcular métricas:\nep_rew_mean, ep_len_mean,\npolicy_loss, value_loss
+
+PPO -> Script: Retornar métricas
+deactivate PPO
+
+Script -> Script: TensorBoard.log(métricas)
+Script -> Script: ¿Es momento de checkpoint?
+alt Cada 500k pasos
+    Script -> Script: model.save("checkpoint_xxx.zip")
+    Script -> Script: vec_normalize.save("vec_norm.pkl")
+end
+
+note right
+    **Iteración completada**
+
+    Repetir hasta alcanzar
+    total_timesteps = 3,000,000
+
+    Progreso:
+    - Iteraciones: ~915
+      (3M / (80 × 4096))
+    - Actualizaciones: ~1,466,400
+      (915 × 10 × 160)
+end note
+
+Script --> Usuario: Training completo!
+
+deactivate MuJoCo
+deactivate Controller
+deactivate Script
+
+@enduml

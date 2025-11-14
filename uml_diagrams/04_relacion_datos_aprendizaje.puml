@@ -1,0 +1,221 @@
+@startuml Relacion_Datos_Aprendizaje
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam roundcorner 10
+skinparam linetype ortho
+
+title Diagrama UML: Relación entre Estructuras de Datos y Proceso de Aprendizaje
+
+package "Conceptos Teóricos de RL" <<Cloud>> {
+    abstract class "Estado (s)" as State {
+        Representación completa
+        del sistema en tiempo t
+    }
+
+    abstract class "Acción (a)" as Action {
+        Decisión del agente
+        en estado s
+    }
+
+    abstract class "Recompensa (r)" as Reward {
+        Señal de evaluación
+        inmediata
+    }
+
+    abstract class "Política π(a|s)" as Policy {
+        Mapeo probabilístico:
+        estado → distribución de acciones
+    }
+
+    abstract class "Función de Valor V(s)" as ValueFunc {
+        Retorno esperado
+        desde estado s
+    }
+
+    abstract class "Ventaja A(s,a)" as Advantage {
+        Qué tan buena es
+        acción a en estado s
+    }
+
+    abstract class "Trayectoria τ" as Trajectory {
+        Secuencia de transiciones:
+        (s₀, a₀, r₀, s₁, a₁, r₁, ...)
+    }
+}
+
+package "Implementación en Memoria" <<Database>> {
+    class "ObservationVector\n[ndarray 65D]" as ObsImpl {
+        + body_position[3]
+        + body_orientation[4]
+        + body_linear_velocity[3]
+        + body_angular_velocity[3]
+        + joint_positions[12]
+        + joint_velocities[12]
+        + foot_positions[12]
+        + foot_velocities[12]
+        + foot_contacts[4]
+    }
+
+    class "ActionVector\n[ndarray 12D]" as ActImpl {
+        + FL_residual[3]
+        + FR_residual[3]
+        + RL_residual[3]
+        + RR_residual[3]
+        --
+        Rango: [-1, 1]
+        Escala: 0.01 m
+    }
+
+    class "RewardScalar\n[float32]" as RewImpl {
+        + forward_velocity: 300.0
+        + contact_pattern: ±0.2
+        + stability: -3.0 × tilt²
+        + lateral_stability: -1.0 × |y|
+        --
+        total = Σ componentes
+    }
+
+    class "ActorCriticPolicy\n[PyTorch Module]" as PolicyImpl {
+        - actor_net: MLP[512,256,128]
+        - critic_net: MLP[512,256,128]
+        - log_std: Parameter[12]
+        --
+        + forward(obs[65]) → (μ[12], V[1])
+        + get_distribution() → N(μ, σ²)
+    }
+
+    class "CriticNetwork\n[PyTorch Module]" as ValueImpl {
+        - fc1: Linear(65, 512)
+        - fc2: Linear(512, 256)
+        - fc3: Linear(256, 128)
+        - out: Linear(128, 1)
+        --
+        + forward(obs[65]) → V[1]
+    }
+
+    class "AdvantageArray\n[ndarray shape=(4096,80,1)]" as AdvImpl {
+        Calculado con GAE:
+        --
+        δₜ = rₜ + γV(s_{t+1}) - V(sₜ)
+        Aₜ = Σ(γλ)ᵏ δ_{t+k}
+        --
+        Normalizado antes de usar
+    }
+
+    class "RolloutBuffer\n[ndarray múltiples]" as TrajImpl {
+        + observations[4096,80,65]
+        + actions[4096,80,12]
+        + rewards[4096,80,1]
+        + values[4096,80,1]
+        + log_probs[4096,80,1]
+        + dones[4096,80,1]
+        + advantages[4096,80,1]
+        + returns[4096,80,1]
+        --
+        Total: 327,680 transiciones
+        Memoria: ~104 MB
+    }
+
+    class "NormalizationStats\n[RunningMeanStd]" as NormImpl {
+        + obs_mean[65]
+        + obs_var[65]
+        + ret_mean[1]
+        + ret_var[1]
+        --
+        Actualización online:
+        μₙ = μ_{n-1} + (x - μ_{n-1})/n
+    }
+}
+
+' Mapeos conceptuales
+State ..|> ObsImpl : <<implementa>>
+Action ..|> ActImpl : <<implementa>>
+Reward ..|> RewImpl : <<implementa>>
+Policy ..|> PolicyImpl : <<implementa>>
+ValueFunc ..|> ValueImpl : <<implementa>>
+Advantage ..|> AdvImpl : <<implementa>>
+Trajectory ..|> TrajImpl : <<implementa>>
+
+' Relaciones de uso en aprendizaje
+ObsImpl --> NormImpl : normalizado por >
+NormImpl --> PolicyImpl : entrada a >
+PolicyImpl --> ActImpl : genera >
+ActImpl --> RewImpl : evaluado con >
+RewImpl --> TrajImpl : almacenado en >
+TrajImpl --> AdvImpl : usado para calcular >
+AdvImpl --> PolicyImpl : actualiza pesos de >
+
+note right of ObsImpl
+    **Percepción del agente**
+
+    Captura estado completo:
+    - Configuración (q)
+    - Velocidades (q̇)
+    - Contactos (c)
+
+    Permite predicción de
+    próximo estado
+end note
+
+note right of ActImpl
+    **Control residual**
+
+    Aprendizaje facilitado:
+    - Base: Bézier gait
+    - RL: Correcciones pequeñas
+
+    Espacio de búsqueda
+    reducido vs. aprender
+    marcha desde cero
+end note
+
+note right of RewImpl
+    **Función de costo**
+
+    Componentes:
+    1. Velocidad deseada (primario)
+    2. Patrón de contacto (secundario)
+    3. Estabilidad (restricción)
+    4. Control lateral (restricción)
+
+    Balance entre objetivos
+end note
+
+note right of TrajImpl
+    **Memoria episódica**
+
+    Permite:
+    - Aprendizaje off-policy
+    - Mini-batch SGD
+    - Reutilización de datos
+    - Paralelización
+
+    Trade-off:
+    - Memoria vs. muestras
+end note
+
+note right of PolicyImpl
+    **Aproximador de función**
+
+    Red neuronal profunda:
+    - Generaliza estados
+    - Suaviza política
+    - Permite gradient descent
+
+    ELU > ReLU para
+    acciones continuas
+end note
+
+note bottom of AdvImpl
+    **Señal de aprendizaje**
+
+    Ventaja A(s,a):
+    - A > 0: acción mejor que promedio
+    - A < 0: acción peor que promedio
+    - A ≈ 0: acción neutral
+
+    Reduce varianza vs. retornos directos
+    (GAE: trade-off bias-variance)
+end note
+
+@enduml
