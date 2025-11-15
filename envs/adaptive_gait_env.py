@@ -87,7 +87,7 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
         model_path: str = "model/world_train.xml",
         gait_params: Optional[GaitParameters] = None,
         residual_scale: float = 0.01,
-        max_episode_steps: int = 6000,
+        max_episode_steps: int = 60000,
         settle_steps: int = 0,
         seed: Optional[int] = None,
     ) -> None:
@@ -266,7 +266,7 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
         lateral_vel = float(linvel[1])
 
         # Reward forward velocity
-        rewards["forward_velocity"] = 5.0 * forward_vel
+        rewards["forward_velocity"] = 2000.0 * forward_vel
 
         # Penalize lateral velocity (drift)
         rewards["lateral_velocity_penalty"] = -2.0 * abs(lateral_vel)
@@ -279,20 +279,20 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
             is_swing = int(swing_flags[leg]) == 1
             has_contact = foot_contacts[leg] > 0.5
             if is_swing and has_contact:
-                contact_reward -= 0.2
+                contact_reward -= 0.5
             elif is_swing and not has_contact:
-                contact_reward += 0.05
+                contact_reward += 0.2
             elif (not is_swing) and has_contact:
-                contact_reward += 0.05
+                contact_reward += 0.2
             else:
-                contact_reward -= 0.2
+                contact_reward -= 0.5
         rewards["contact_pattern"] = float(contact_reward)
 
         # 3. Stability
         quat = self.sensor_reader.get_body_quaternion()
         roll, pitch, yaw = quat_to_euler(quat, True)
         tilt_penalty = roll * roll + pitch * pitch + yaw * yaw
-        rewards["stability"] = -0.1 * float(tilt_penalty)
+        rewards["stability"] = -2.0 * float(tilt_penalty)
 
 
 

@@ -5,11 +5,15 @@ This script loads a trained adaptive gait policy and runs it in the MuJoCo
 viewer, displaying real-time gait parameter adaptations.
 
 Usage:
+    # Run with trained policy
     python3 play_adaptive_policy.py \\
         --model runs/adaptive_gait_XXX/final_model.zip \\
         --normalize runs/adaptive_gait_XXX/vec_normalize.pkl \\
         --seconds 30 \\
         --deterministic
+
+    # Run baseline (pure gait controller without residuals)
+    python3 play_adaptive_policy.py --baseline --seconds 30
 """
 
 from __future__ import annotations
@@ -40,28 +44,46 @@ def make_env():
         model_path="model/world_train.xml",
         gait_params=gait,
         residual_scale=RESIDUAL_SCALE,
-        max_episode_steps=6000,
+        max_episode_steps=60000,
         settle_steps=0,
     )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Play trained adaptive gait policy")
-    parser.add_argument("--model", type=str, required=True, help="Path to trained model (.zip)")
+    parser.add_argument("--model", type=str, default=None, help="Path to trained model (.zip)")
     parser.add_argument("--normalize", type=str, default=None, help="Path to VecNormalize stats (.pkl)")
     parser.add_argument("--seconds", type=float, default=30.0, help="Duration to run [seconds]")
     parser.add_argument("--deterministic", action="store_true", help="Use deterministic actions")
     parser.add_argument("--flat", action="store_true", help="Use flat terrain instead of rough")
     parser.add_argument("--no-reset", action="store_true", help="Disable automatic reset on termination (for visualization)")
+    parser.add_argument("--baseline", action="store_true", help="Run baseline gait without residuals (zero actions)")
     args = parser.parse_args()
 
-    # Load model
-    print(f"Loading model from {args.model}...")
-    model = PPO.load(args.model)
+    # Load model (unless baseline mode)
+    model = None
+    if args.baseline:
+        print("Running in BASELINE mode (zero actions - pure gait controller)")
+    else:
+        if args.model is None:
+            raise SystemExit("--model is required unless --baseline is set")
+        print(f"Loading model from {args.model}...")
+        model = PPO.load(args.model)
 
     # Create environment
     print("Creating environment...")
-    env = make_env()
+    env = AdaptiveGaitEnv(
+        model_path="model/world_train.xml",
+        gait_params=GaitParameters(
+            body_height=0.05,
+            step_length=0.06,
+            step_height=0.04,
+            cycle_time=0.8
+        ),
+        residual_scale=RESIDUAL_SCALE,
+        max_episode_steps=60000,
+        settle_steps=0,
+    )
 
     # Override with flat terrain if requested
     if args.flat:
@@ -75,7 +97,7 @@ def main() -> int:
                 cycle_time=0.8
             ),
             residual_scale=RESIDUAL_SCALE,
-            max_episode_steps=2000,
+            max_episode_steps=60000,
             settle_steps=0,
         )
 
@@ -98,6 +120,7 @@ def main() -> int:
     print(f"Deterministic:   {args.deterministic}")
     print(f"Terrain:         {'flat (world.xml)' if args.flat else 'rough (world_train.xml)'}")
     print(f"Auto-reset:      {'disabled' if args.no_reset else 'enabled'}")
+    print(f"Mode:            {'BASELINE (zero actions - pure gait)' if args.baseline else f'ADAPTIVE (residual_scale={RESIDUAL_SCALE})'}")
     print("\nWatch the console for real-time gait parameter updates!")
     print("=" * 80)
     print()
@@ -128,8 +151,35 @@ def main() -> int:
             if elapsed >= args.seconds:
                 break
 
-            # Get action from policy
+            # Store pre-step diagnostics for termination analysis
             if use_vec_env:
+                try:
+                    sensor_reader = vec_env.get_attr("sensor_reader")[0]
+                    pre_quat = sensor_reader.get_body_quaternion()
+                    pre_body_pos = sensor_reader.read_sensor("body_pos")
+                    pre_linvel = sensor_reader.read_sensor("body_linvel")
+                except Exception:
+                    pre_quat = None
+                    pre_body_pos = None
+                    pre_linvel = None
+            else:
+                try:
+                    pre_quat = env.sensor_reader.get_body_quaternion()
+                    pre_body_pos = env.sensor_reader.read_sensor("body_pos")
+                    pre_linvel = env.sensor_reader.read_sensor("body_linvel")
+                except Exception:
+                    pre_quat = None
+                    pre_body_pos = None
+                    pre_linvel = None
+
+            # Get action from policy (or use zero actions for baseline)
+            if model is None:
+                # Baseline mode: zero actions (pure gait controller)
+                if use_vec_env:
+                    action = np.zeros((1, env.action_space.shape[0]), dtype=np.float32)
+                else:
+                    action = np.zeros(env.action_space.shape[0], dtype=np.float32)
+            elif use_vec_env:
                 action, _ = model.predict(obs, deterministic=args.deterministic)
             else:
                 action, _ = model.predict(obs, deterministic=args.deterministic)
@@ -139,22 +189,52 @@ def main() -> int:
                 obs, reward, done, info = vec_env.step(action)
                 # Extract info from vec env
                 if done[0]:
-                    # Check termination reason by inspecting env state
-                    try:
-                        sensor_reader = vec_env.get_attr("sensor_reader")[0]
-                        quat = sensor_reader.get_body_quaternion()
-                        from envs.adaptive_gait_env import quat_to_euler
-                        import math
-                        roll, pitch, _ = quat_to_euler(quat, False)
-                        steps = vec_env.get_attr("step_count")[0]
+                    # Check termination reason using pre-step state
+                    from envs.adaptive_gait_env import quat_to_euler
+                    import math
 
-                        print(f"\n[t={elapsed:.1f}s] Episode ended after {steps} steps")
-                        if abs(roll) > math.pi / 3 or abs(pitch) > math.pi / 3:
-                            print(f"  Reason: Robot tipped (roll={math.degrees(roll):.1f}°, pitch={math.degrees(pitch):.1f}°)")
-                        else:
-                            print(f"  Reason: Max steps reached")
-                    except Exception as e:
-                        print(f"\n[t={elapsed:.1f}s] Episode ended (could not determine reason: {e})")
+                    steps = vec_env.get_attr("step_count")[0]
+                    print(f"\n{'='*60}")
+                    print(f"[t={elapsed:.1f}s] EPISODE TERMINATED after {steps} steps")
+                    print(f"{'='*60}")
+
+                    # Try to get orientation from pre-step state
+                    if pre_quat is not None and np.linalg.norm(pre_quat) > 1e-6:
+                        try:
+                            roll, pitch, yaw = quat_to_euler(pre_quat, False)
+                            print(f"  Orientation (pre-step):")
+                            print(f"    Roll:  {math.degrees(roll):>7.2f}° (limit: ±60°)")
+                            print(f"    Pitch: {math.degrees(pitch):>7.2f}° (limit: ±60°)")
+                            print(f"    Yaw:   {math.degrees(yaw):>7.2f}°")
+
+                            if abs(roll) > math.pi / 3 or abs(pitch) > math.pi / 3:
+                                print(f"  Termination reason: ROBOT TIPPED OVER")
+                                if abs(roll) > math.pi / 3:
+                                    print(f"    → Roll exceeded limit ({math.degrees(roll):.1f}° > 60°)")
+                                if abs(pitch) > math.pi / 3:
+                                    print(f"    → Pitch exceeded limit ({math.degrees(pitch):.1f}° > 60°)")
+                            else:
+                                print(f"  Termination reason: MAX STEPS REACHED")
+                        except Exception as e:
+                            print(f"  Could not compute Euler angles: {e}")
+                    else:
+                        print(f"  Termination reason: UNKNOWN (quaternion invalid)")
+
+                    # Additional diagnostics
+                    if pre_body_pos is not None:
+                        print(f"  Body position: x={pre_body_pos[0]:.3f}m, y={pre_body_pos[1]:.3f}m, z={pre_body_pos[2]:.3f}m")
+                    if pre_linvel is not None:
+                        print(f"  Linear velocity: x={pre_linvel[0]:.3f}m/s, y={pre_linvel[1]:.3f}m/s, z={pre_linvel[2]:.3f}m/s")
+
+                    # Get current gait params from last info
+                    current_info = info[0] if isinstance(info, (list, tuple)) else info
+                    if "gait_params" in current_info:
+                        params = current_info["gait_params"]
+                        print(f"  Active gait params:")
+                        print(f"    step_height={params['step_height']:.4f}m, step_length={params['step_length']:.4f}m")
+                        print(f"    cycle_time={params['cycle_time']:.3f}s, body_height={params['body_height']:.4f}m")
+
+                    print(f"{'='*60}\n")
 
                     if not args.no_reset:
                         print(f"  Resetting environment...")
@@ -168,16 +248,40 @@ def main() -> int:
                 obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 if done:
+                    from envs.adaptive_gait_env import quat_to_euler
+                    import math
+
+                    print(f"\n{'='*60}")
+                    print(f"[t={elapsed:.1f}s] EPISODE TERMINATED")
+                    print(f"{'='*60}")
+
+                    if pre_quat is not None and np.linalg.norm(pre_quat) > 1e-6:
+                        try:
+                            roll, pitch, yaw = quat_to_euler(pre_quat, False)
+                            print(f"  Orientation (pre-step):")
+                            print(f"    Roll:  {math.degrees(roll):>7.2f}° (limit: ±60°)")
+                            print(f"    Pitch: {math.degrees(pitch):>7.2f}° (limit: ±60°)")
+                            print(f"    Yaw:   {math.degrees(yaw):>7.2f}°")
+                        except Exception as e:
+                            print(f"  Could not compute Euler angles: {e}")
+
                     if terminated:
-                        print(f"\n[t={elapsed:.1f}s] Episode terminated (robot tipped over)")
+                        print(f"  Termination reason: ROBOT TIPPED OVER")
                     if truncated:
-                        print(f"\n[t={elapsed:.1f}s] Episode truncated (max steps reached)")
+                        print(f"  Termination reason: MAX STEPS REACHED")
+
+                    if pre_body_pos is not None:
+                        print(f"  Body position: x={pre_body_pos[0]:.3f}m, y={pre_body_pos[1]:.3f}m, z={pre_body_pos[2]:.3f}m")
+                    if pre_linvel is not None:
+                        print(f"  Linear velocity: x={pre_linvel[0]:.3f}m/s, y={pre_linvel[1]:.3f}m/s, z={pre_linvel[2]:.3f}m/s")
+
+                    print(f"{'='*60}\n")
 
                     if not args.no_reset:
-                        print(f"[t={elapsed:.1f}s] Resetting environment...")
+                        print(f"  Resetting environment...")
                         obs, _ = env.reset()
                     else:
-                        print(f"[t={elapsed:.1f}s] Continuing without reset (--no-reset enabled)")
+                        print(f"  Continuing without reset (--no-reset enabled)")
                 current_info = info
 
             # Update viewer
@@ -205,6 +309,23 @@ def main() -> int:
             # Control playback speed
             time.sleep(env.model.opt.timestep)
 
+        # Get final robot position before closing viewer
+        try:
+            if use_vec_env:
+                sensor_reader = vec_env.get_attr("sensor_reader")[0]
+                final_body_pos = sensor_reader.read_sensor("body_pos")
+                final_quat = sensor_reader.get_body_quaternion()
+                final_linvel = sensor_reader.read_sensor("body_linvel")
+            else:
+                final_body_pos = env.sensor_reader.read_sensor("body_pos")
+                final_quat = env.sensor_reader.get_body_quaternion()
+                final_linvel = env.sensor_reader.read_sensor("body_linvel")
+        except Exception as e:
+            final_body_pos = None
+            final_quat = None
+            final_linvel = None
+            print(f"Warning: Could not read final robot state: {e}")
+
     # Print statistics
     print("\n" + "=" * 80)
     print("Playback complete!")
@@ -212,6 +333,25 @@ def main() -> int:
     print(f"Total steps: {step_count}")
     print(f"Duration:    {elapsed:.1f}s")
     print()
+
+    # Print final robot position
+    if final_body_pos is not None:
+        print("Final Robot State:")
+        print("-" * 40)
+        print(f"Position:        x={final_body_pos[0]:.3f}m, y={final_body_pos[1]:.3f}m, z={final_body_pos[2]:.3f}m")
+
+        if final_linvel is not None:
+            print(f"Linear velocity: x={final_linvel[0]:.3f}m/s, y={final_linvel[1]:.3f}m/s, z={final_linvel[2]:.3f}m/s")
+
+        if final_quat is not None and np.linalg.norm(final_quat) > 1e-6:
+            try:
+                from envs.adaptive_gait_env import quat_to_euler
+                import math
+                roll, pitch, yaw = quat_to_euler(final_quat, False)
+                print(f"Orientation:     roll={math.degrees(roll):.2f}°, pitch={math.degrees(pitch):.2f}°, yaw={math.degrees(yaw):.2f}°")
+            except Exception:
+                pass
+        print()
 
     if gait_param_history["step_height"]:
         print("Gait Parameter Statistics:")

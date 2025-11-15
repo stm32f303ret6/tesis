@@ -15,7 +15,7 @@ FORWARD_SIGN = -1.0  # +1 keeps controller +X, -1 flips to match leg IK frame
 
 GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.06, step_height=0.04, cycle_time=0.8)
 
-model = mujoco.MjModel.from_xml_path("model/world.xml")
+model = mujoco.MjModel.from_xml_path("model/world_train.xml")
 data = mujoco.MjData(model)
 robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
 
@@ -57,11 +57,6 @@ def main() -> None:
             mujoco.mj_step(model, data)
 
             robot_pos = data.xpos[robot_body_id]
-
-            # Get current velocity from sensor and print velocity error
-            current_velocity_x = data.cvel[robot_body_id][3]  # Linear velocity X component
-            velocity_error = current_velocity_x - expected_velocity_x
-            print(f"Velocity error: {velocity_error:.4f} m/s (current: {current_velocity_x:.4f}, expected: {expected_velocity_x:.4f})")
 
             viewer.cam.lookat[:] = robot_pos
             viewer.sync()

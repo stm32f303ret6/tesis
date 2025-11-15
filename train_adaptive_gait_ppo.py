@@ -42,10 +42,10 @@ RESIDUAL_SCALE = 0.01
 class TrainingConfig:
     """Centralized training configuration."""
     # Duration
-    total_timesteps: int = 15_000_000  # Increased for more complex policy
+    total_timesteps: int = 30_000_000  # Increased for more complex policy
 
     # Parallelism
-    n_envs: int = 80
+    n_envs: int = 84
     vec_env_backend: str = "subproc"  # "subproc" or "dummy"
 
     # PPO hyperparameters
@@ -88,7 +88,7 @@ def make_env(log_dir: Path, rank: int, cfg: TrainingConfig):
             model_path="model/world_train.xml",
             gait_params=gait,
             residual_scale=cfg.residual_scale,
-            max_episode_steps=6000,
+            max_episode_steps=60000,
             settle_steps=0,
             seed=rank,
         )
