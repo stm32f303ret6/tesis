@@ -37,12 +37,12 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from envs.adaptive_gait_env import AdaptiveGaitEnv
 from gait_controller import GaitParameters
 
-
+RESIDUAL_SCALE = 0.01
 @dataclass
 class TrainingConfig:
     """Centralized training configuration."""
     # Duration
-    total_timesteps: int = 25_000_000  # Increased for more complex policy
+    total_timesteps: int = 15_000_000  # Increased for more complex policy
 
     # Parallelism
     n_envs: int = 80
@@ -51,7 +51,7 @@ class TrainingConfig:
     # PPO hyperparameters
     n_steps: int = 4096
     batch_size: int = 2048
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     gamma: float = 0.99
     gae_lambda: float = 0.95
     n_epochs: int = 10
@@ -61,7 +61,7 @@ class TrainingConfig:
 
     # Network and env
     network_size: str = "large"  # small | medium | large
-    residual_scale: float = 0.01
+    residual_scale: float = RESIDUAL_SCALE
 
     # Logging/saving
     run_name: str = "adaptive_gait"
@@ -85,10 +85,10 @@ def make_env(log_dir: Path, rank: int, cfg: TrainingConfig):
             cycle_time=0.8
         )
         env = AdaptiveGaitEnv(
-            model_path="model/world.xml",
+            model_path="model/world_train.xml",
             gait_params=gait,
             residual_scale=cfg.residual_scale,
-            max_episode_steps=5000,
+            max_episode_steps=6000,
             settle_steps=0,
             seed=rank,
         )
@@ -269,12 +269,23 @@ def main() -> int:
     print("\n" + "=" * 80)
     print("Next steps:")
     print("=" * 80)
-    print("\n1. Monitor training metrics:")
+    print("\n1. Test the trained policy:")
+    print(f"   python3 play_adaptive_policy.py \\")
+    print(f"       --model {log_dir}/final_model.zip \\")
+    print(f"       --normalize {log_dir}/vec_normalize.pkl \\")
+    print(f"       --seconds 30 \\")
+    print(f"       --deterministic")
+    print()
+    print("   Optional flags:")
+    print("     --flat          Use flat terrain instead of rough")
+    print("     --no-reset      Disable auto-reset on termination")
+    print()
+    print("\n2. Monitor training metrics:")
     print(f"   tensorboard --logdir {log_dir}")
-    print("\n2. Watch learned gait parameter adaptation:")
-    print("   Check 'gait_params' in the info dict during evaluation")
-    print("\n3. Compare with residual-only policy:")
-    print("   Train residual-only for same number of steps and compare")
+    print()
+    print("\n3. Analyze training results:")
+    print(f"   python3 analyze_training_results.py {log_dir}")
+    print(f"   python3 plot_learning_curve.py {log_dir}")
     print()
     print("Expected behavior:")
     print("  - Policy should increase step_height on rough terrain")

@@ -27,12 +27,19 @@ class AdaptiveGaitController:
     """
 
     # Default parameter ranges (min, max, default)
-    DEFAULT_RANGES = {
+    '''DEFAULT_RANGES = {
         "step_height": (0.015, 0.06, 0.04),
         "step_length": (0.03, 0.08, 0.06),
         "cycle_time": (0.6, 1.2, 0.8),
         "body_height": (0.04, 0.08, 0.05),
+    }'''
+    DEFAULT_RANGES = {
+      "step_height": (0.03, 0.090, 0.04),   # Increase from 0.06 to 0.08
+      "step_length": (0.030, 0.100, 0.06),   # Increase from 0.08 to 0.10
+      "cycle_time": (0.800, 1.500, 0.80),    # Expand from [0.6, 1.2] to [0.4, 1.5] QUE EL MINIMO SEA 0.8 !! 
+      "body_height": (0.04, 0.055, 0.05),   # Slightly expand
     }
+
 
     def __init__(
         self,

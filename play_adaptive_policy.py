@@ -27,7 +27,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from envs.adaptive_gait_env import AdaptiveGaitEnv
 from gait_controller import GaitParameters
 
-
+RESIDUAL_SCALE = 0.01
 def make_env():
     """Create evaluation environment."""
     gait = GaitParameters(
@@ -39,8 +39,8 @@ def make_env():
     return AdaptiveGaitEnv(
         model_path="model/world_train.xml",
         gait_params=gait,
-        residual_scale=0.01,
-        max_episode_steps=10000,
+        residual_scale=RESIDUAL_SCALE,
+        max_episode_steps=6000,
         settle_steps=0,
     )
 
@@ -52,6 +52,7 @@ def main() -> int:
     parser.add_argument("--seconds", type=float, default=30.0, help="Duration to run [seconds]")
     parser.add_argument("--deterministic", action="store_true", help="Use deterministic actions")
     parser.add_argument("--flat", action="store_true", help="Use flat terrain instead of rough")
+    parser.add_argument("--no-reset", action="store_true", help="Disable automatic reset on termination (for visualization)")
     args = parser.parse_args()
 
     # Load model
@@ -66,15 +67,15 @@ def main() -> int:
     if args.flat:
         print("Using flat terrain (world.xml)")
         env = AdaptiveGaitEnv(
-            model_path="model/world.xml",
+            model_path="model/world_train.xml",
             gait_params=GaitParameters(
                 body_height=0.05,
                 step_length=0.06,
                 step_height=0.04,
                 cycle_time=0.8
             ),
-            residual_scale=0.01,
-            max_episode_steps=10000,
+            residual_scale=RESIDUAL_SCALE,
+            max_episode_steps=2000,
             settle_steps=0,
         )
 
@@ -96,6 +97,7 @@ def main() -> int:
     print(f"Duration:        {args.seconds:.1f}s")
     print(f"Deterministic:   {args.deterministic}")
     print(f"Terrain:         {'flat (world.xml)' if args.flat else 'rough (world_train.xml)'}")
+    print(f"Auto-reset:      {'disabled' if args.no_reset else 'enabled'}")
     print("\nWatch the console for real-time gait parameter updates!")
     print("=" * 80)
     print()
@@ -137,13 +139,45 @@ def main() -> int:
                 obs, reward, done, info = vec_env.step(action)
                 # Extract info from vec env
                 if done[0]:
-                    obs = vec_env.reset()
-                current_info = vec_env.env_method("step", action[0])[0][-1]  # Get info
+                    # Check termination reason by inspecting env state
+                    try:
+                        sensor_reader = vec_env.get_attr("sensor_reader")[0]
+                        quat = sensor_reader.get_body_quaternion()
+                        from envs.adaptive_gait_env import quat_to_euler
+                        import math
+                        roll, pitch, _ = quat_to_euler(quat, False)
+                        steps = vec_env.get_attr("step_count")[0]
+
+                        print(f"\n[t={elapsed:.1f}s] Episode ended after {steps} steps")
+                        if abs(roll) > math.pi / 3 or abs(pitch) > math.pi / 3:
+                            print(f"  Reason: Robot tipped (roll={math.degrees(roll):.1f}°, pitch={math.degrees(pitch):.1f}°)")
+                        else:
+                            print(f"  Reason: Max steps reached")
+                    except Exception as e:
+                        print(f"\n[t={elapsed:.1f}s] Episode ended (could not determine reason: {e})")
+
+                    if not args.no_reset:
+                        print(f"  Resetting environment...")
+                        obs = vec_env.reset()
+                    else:
+                        print(f"  Continuing without reset (--no-reset enabled)")
+
+                # Get info from the wrapped info dict
+                current_info = info[0] if isinstance(info, (list, tuple)) else info
             else:
                 obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 if done:
-                    obs, _ = env.reset()
+                    if terminated:
+                        print(f"\n[t={elapsed:.1f}s] Episode terminated (robot tipped over)")
+                    if truncated:
+                        print(f"\n[t={elapsed:.1f}s] Episode truncated (max steps reached)")
+
+                    if not args.no_reset:
+                        print(f"[t={elapsed:.1f}s] Resetting environment...")
+                        obs, _ = env.reset()
+                    else:
+                        print(f"[t={elapsed:.1f}s] Continuing without reset (--no-reset enabled)")
                 current_info = info
 
             # Update viewer

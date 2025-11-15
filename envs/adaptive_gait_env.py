@@ -87,7 +87,7 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
         model_path: str = "model/world_train.xml",
         gait_params: Optional[GaitParameters] = None,
         residual_scale: float = 0.01,
-        max_episode_steps: int = 5000,
+        max_episode_steps: int = 6000,
         settle_steps: int = 0,
         seed: Optional[int] = None,
     ) -> None:
@@ -103,10 +103,6 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
             residual_scale=residual_scale,
         )
         self.sensor_reader = SensorReader(self.model, self.data)
-
-        # Derive expected velocity from base gait parameters
-        base_params = self.controller.base_params
-        self.expected_velocity = float(base_params.step_length / base_params.cycle_time)
 
         # Initial body height (set during reset)
         self.initial_body_height: Optional[float] = None
@@ -191,15 +187,22 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
         contact_array = np.array([foot_contacts[leg] for leg in LEG_NAMES], dtype=float)
         obs_components.append(contact_array)
 
-        # Current gait parameters (normalized to ~[-1, 1] range)
+        # Current gait parameters (normalized to [-1, 1] range)
+        # Normalized as: (value - center) / scale
+        # Where center = (min + max) / 2 and scale = (max - min) / 2
+        # This maps [min, max] to [-1, 1] automatically based on controller ranges
         current_params = self.controller.get_current_parameters()
-        param_obs = np.array([
-            (current_params["step_height"] - 0.04) / 0.02,   # Center around 0.04m
-            (current_params["step_length"] - 0.055) / 0.025, # Center around 0.055m
-            (current_params["cycle_time"] - 0.9) / 0.3,      # Center around 0.9s
-            (current_params["body_height"] - 0.06) / 0.02,   # Center around 0.06m
-        ], dtype=float)
-        obs_components.append(param_obs)
+        ranges = self.controller.param_ranges
+
+        param_obs = []
+        for param_name in ["step_height", "step_length", "cycle_time", "body_height"]:
+            min_val, max_val, _ = ranges[param_name]
+            center = (min_val + max_val) / 2.0
+            scale = (max_val - min_val) / 2.0
+            normalized = (current_params[param_name] - center) / scale
+            param_obs.append(normalized)
+
+        obs_components.append(np.array(param_obs, dtype=float))
 
         obs = np.concatenate(obs_components).astype(np.float32)
         if not np.all(np.isfinite(obs)):
@@ -257,11 +260,16 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
         """Compute reward focused on forward velocity and gait quality."""
         rewards: Dict[str, float] = {}
 
-        # 1. Forward velocity tracking
+        # 1. Forward velocity reward (simple progress reward)
         linvel = self.sensor_reader.read_sensor("body_linvel")
         forward_vel = float(linvel[0])
-        vel_error = abs(forward_vel - self.expected_velocity)
-        rewards["forward_velocity"] = 300.0 * (1.0 - vel_error)
+        lateral_vel = float(linvel[1])
+
+        # Reward forward velocity
+        rewards["forward_velocity"] = 5.0 * forward_vel
+
+        # Penalize lateral velocity (drift)
+        rewards["lateral_velocity_penalty"] = -2.0 * abs(lateral_vel)
 
         # 2. Foot contact pattern
         foot_contacts = self._get_foot_contact_forces()
@@ -284,23 +292,9 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
         quat = self.sensor_reader.get_body_quaternion()
         roll, pitch, yaw = quat_to_euler(quat, True)
         tilt_penalty = roll * roll + pitch * pitch + yaw * yaw
-        rewards["stability"] = -3.0 * float(tilt_penalty)
+        rewards["stability"] = -0.1 * float(tilt_penalty)
 
-        # 4. Lateral stability
-        body_pos = self.sensor_reader.read_sensor("body_pos")
-        lateral_error = abs(float(body_pos[1]))
-        rewards["lateral_stability"] = -1.0 * lateral_error
 
-        # 5. Energy efficiency (penalize extreme parameter changes)
-        # Encourage the policy to use reasonable gait parameters
-        current_params = self.controller.get_current_parameters()
-        base_params = self.controller.base_params
-        param_penalty = 0.0
-        param_penalty += (current_params["step_height"] - base_params.step_height) ** 2
-        param_penalty += (current_params["step_length"] - base_params.step_length) ** 2
-        param_penalty += (current_params["cycle_time"] - base_params.cycle_time) ** 2
-        param_penalty += (current_params["body_height"] - base_params.body_height) ** 2
-        rewards["parameter_smoothness"] = -5.0 * float(param_penalty)
 
         total = float(sum(rewards.values()))
         return total, rewards
