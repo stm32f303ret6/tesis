@@ -1,0 +1,82 @@
+@startuml Topología ROS2 - Robot Cuadrúpedo
+
+!define TOPIC_COLOR #E1F5C4
+!define NODE_COLOR #B3E5FC
+!define SERVICE_COLOR #FFE082
+!define SUPPORT_COLOR #F8BBD0
+
+skinparam rectangle {
+    BackgroundColor<<topic>> TOPIC_COLOR
+    BorderColor<<topic>> #7CB342
+    BackgroundColor<<node>> NODE_COLOR
+    BorderColor<<node>> #0277BD
+    BackgroundColor<<service>> SERVICE_COLOR
+    BorderColor<<service>> #F57C00
+    BackgroundColor<<support>> SUPPORT_COLOR
+    BorderColor<<support>> #C2185B
+}
+
+title Simplificación por Capas Lógicas
+
+package "Capa de Interfaz" {
+    rectangle "GUI Operador\n(PyQt + Joystick)" as GUI <<support>>
+
+    rectangle "gui_ros_node" as GUINode <<node>> {
+        portout cmd_pub
+        portin cam_sub
+        portin pose_sub
+        portout restart_cli
+    }
+}
+
+package "Capa de Mensajería ROS2" {
+    rectangle "/cmd_movement\n(std_msgs/Int32)" as MovementTopic <<topic>>
+    rectangle "/camera/image_raw\n(sensor_msgs/Image)" as CameraTopic <<topic>>
+    rectangle "/body_state\n(std_msgs/Float32MultiArray)" as BodyTopic <<topic>>
+    rectangle "/restart_simulation\n(std_srvs/Trigger)" as RestartService <<service>>
+}
+
+package "Capa de Control Autónomo" {
+    rectangle "robot_control_node" as RobotNode <<node>>
+    rectangle "Motor de Marcha\n(Gait Planner + IK)" as GaitIK <<support>>
+}
+
+package "Capa de Simulación y Sensado" {
+    rectangle "MuJoCo Simulation\n(model/world.xml)" as MuJoCo <<support>> {
+        component "Sensor Cámara" as CameraSensor
+        component "Sensor Postura" as PoseSensor
+    }
+}
+
+' Interfaz
+GUI -right-> GUINode : "Eventos UI + joystick\n(frecuencia ~100 Hz)"
+
+' GUI <-> ROS2
+GUINode -down-> MovementTopic : "Publica cmd:int32\n0=stop,1=forward,2=back"
+GUINode -down-> RestartService : "Invoca Trigger\nreset solicitado"
+CameraTopic -up-> GUINode : "Suscribe frames RGB8\n640x480 a 10 Hz"
+BodyTopic -up-> GUINode : "Suscribe pose base\n[x,y,z,roll,pitch,yaw]"
+
+' ROS2 <-> Control
+MovementTopic -down-> RobotNode : "Suscribe std_msgs/Int32\ncontrol locomoción"
+RestartService -down-> RobotNode : "Callback std_srvs/Trigger\nreinicia simulación"
+RobotNode -up-> CameraTopic : "Publica sensor_msgs/Image\ncamará montada"
+RobotNode -up-> BodyTopic : "Publica Float32MultiArray\npose cuerpo 6 elementos"
+
+' Control interno
+RobotNode -down-> GaitIK : "Envía estado actual\ny parámetros de marcha"
+GaitIK -up-> RobotNode : "Devuelve setpoints\n12 articulaciones"
+
+' Control <-> Simulación
+RobotNode -down-> MuJoCo : "Aplica ctrl[12]\ntorques/posiciones"
+CameraSensor -up-> RobotNode : "Entrega imagen cruda\npara /camera/image_raw"
+PoseSensor -up-> RobotNode : "Vector [x,y,z,quat]\nfiltrado del modelo"
+
+legend right
+  |<TOPIC_COLOR> Topic |
+  |<NODE_COLOR> Nodo ROS2 |
+  |<SERVICE_COLOR> Servicio ROS2 |
+  |<SUPPORT_COLOR> Componente de Soporte |
+endlegend
+
+@enduml

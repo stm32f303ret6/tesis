@@ -12,6 +12,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image as RosImage
 from std_msgs.msg import Int32, Float32MultiArray
+from std_srvs.srv import Trigger
 from cv_bridge import CvBridge
 from scipy.spatial.transform import Rotation
 
@@ -57,11 +58,21 @@ class RobotControlNode(Node):
             10
         )
 
+        # Service server for restarting simulation
+        self.restart_service = self.create_service(
+            Trigger,
+            'restart_simulation',
+            self.restart_callback
+        )
+
         # CvBridge for converting images
         self.bridge = CvBridge()
 
         # Movement command state (0=no movement, 1=up, 2=down)
         self.movement_command = 0
+
+        # Restart simulation flag
+        self.restart_requested = False
 
         self.get_logger().info('Robot Control Node initialized')
 
@@ -74,6 +85,14 @@ class RobotControlNode(Node):
             self.get_logger().info('Movement command: DOWN')
         elif self.movement_command == 0:
             self.get_logger().info('Movement command: STOP')
+
+    def restart_callback(self, request, response):
+        """Handle simulation restart requests."""
+        self.get_logger().info('Restart simulation service called')
+        self.restart_requested = True
+        response.success = True
+        response.message = 'Simulation restart requested'
+        return response
 
     def publish_camera_image(self, pixels):
         """Publish camera image to ROS2 topic."""
@@ -203,6 +222,19 @@ def main() -> None:
 
             # Process ROS2 callbacks
             rclpy.spin_once(ros_node, timeout_sec=0.0)
+
+            # Check if restart was requested
+            if ros_node.restart_requested:
+                ros_node.get_logger().info('Restarting MuJoCo simulation...')
+                # Reset simulation data in-place
+                mujoco.mj_resetData(model, data)
+                # Reset gait controller
+                controller.reset()
+                # Reset camera capture timer (data.time gets reset to 0)
+                last_capture_time = 0.0
+                # Clear restart flag
+                ros_node.restart_requested = False
+                ros_node.get_logger().info('Simulation restarted successfully')
 
             # Apply gait with movement command from ROS2
             apply_gait_targets(controller, model.opt.timestep, ros_node.movement_command)

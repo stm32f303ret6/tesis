@@ -11,6 +11,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image as RosImage
 from std_msgs.msg import Int32, Float32MultiArray
+from std_srvs.srv import Trigger
 from cv_bridge import CvBridge
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5.QtCore import QTimer, Qt
@@ -44,6 +45,9 @@ class GuiRosNode(Node):
         # Publishers
         self.movement_publisher = self.create_publisher(Int32, 'movement_command', 10)
 
+        # Service clients
+        self.restart_client = self.create_client(Trigger, 'restart_simulation')
+
         # CvBridge for converting images
         self.bridge = CvBridge()
 
@@ -76,6 +80,27 @@ class GuiRosNode(Node):
         msg = Int32()
         msg.data = command
         self.movement_publisher.publish(msg)
+
+    def call_restart_service(self):
+        """Call the restart simulation service."""
+        if not self.restart_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warning('Restart service not available')
+            return
+
+        request = Trigger.Request()
+        future = self.restart_client.call_async(request)
+        future.add_done_callback(self.restart_response_callback)
+
+    def restart_response_callback(self, future):
+        """Handle response from restart service."""
+        try:
+            response = future.result()
+            if response.success:
+                self.get_logger().info(f'Restart successful: {response.message}')
+            else:
+                self.get_logger().error(f'Restart failed: {response.message}')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}')
 
 
 class MainWindow(QMainWindow):
@@ -147,6 +172,9 @@ class MainWindow(QMainWindow):
             'left': False,
             'right': False
         }
+
+        # Track button states for edge detection (will be populated dynamically)
+        self.button_states = {}
 
         # Track last published movement command
         self.last_movement_command = 0
@@ -412,6 +440,31 @@ class MainWindow(QMainWindow):
                 new_state['left'] = True
             elif axis_x > threshold:  # Right
                 new_state['right'] = True
+
+        # Check all buttons and print when any button is pressed (for debugging)
+        num_buttons = self.joystick.get_numbuttons()
+        for i in range(num_buttons):
+            button_state = self.joystick.get_button(i)
+            if button_state == 1:
+                # Store button state if not tracked yet
+                if i not in self.button_states:
+                    self.button_states[i] = False
+
+                # Detect rising edge (button press, not hold)
+                if button_state and not self.button_states.get(i, False):
+                    print(f"Button {i} pressed")
+
+                    # Check if this is the restart button (button 0 for Android Gamepad)
+                    if i == 0:
+                        print("Restart button detected - requesting simulation restart")
+                        self.ros_node.call_restart_service()
+
+                # Update button state
+                self.button_states[i] = button_state
+            else:
+                # Button released
+                if i in self.button_states:
+                    self.button_states[i] = False
 
         # Update images if state changed
         if new_state != self.joystick_state:
