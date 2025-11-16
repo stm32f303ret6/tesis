@@ -260,7 +260,7 @@ class AdaptiveGaitEnv(gym.Env):  # type: ignore[misc]
         """Compute reward focused on forward velocity and gait quality."""
         rewards: Dict[str, float] = {}
 
-        # 1. Forward velocity reward (simple progress reward)
+        # 1. Forward velocity reward 
         linvel = self.sensor_reader.read_sensor("body_linvel")
         forward_vel = float(linvel[0])
         lateral_vel = float(linvel[1])

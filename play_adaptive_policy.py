@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -58,6 +59,7 @@ def main() -> int:
     parser.add_argument("--flat", action="store_true", help="Use flat terrain instead of rough")
     parser.add_argument("--no-reset", action="store_true", help="Disable automatic reset on termination (for visualization)")
     parser.add_argument("--baseline", action="store_true", help="Run baseline gait without residuals (zero actions)")
+    parser.add_argument("--save-trajectory", type=str, default=None, help="Save trajectory data to JSON file")
     args = parser.parse_args()
 
     # Load model (unless baseline mode)
@@ -145,6 +147,9 @@ def main() -> int:
             "cycle_time": [],
             "body_height": [],
         }
+
+        # Tracking for trajectory (if requested)
+        trajectory_data = []
 
         while True:
             elapsed = time.time() - start_time
@@ -284,6 +289,24 @@ def main() -> int:
                         print(f"  Continuing without reset (--no-reset enabled)")
                 current_info = info
 
+            # Record trajectory data if requested
+            if args.save_trajectory:
+                try:
+                    if use_vec_env:
+                        sensor_reader = vec_env.get_attr("sensor_reader")[0]
+                        body_pos = sensor_reader.read_sensor("body_pos")
+                    else:
+                        body_pos = env.sensor_reader.read_sensor("body_pos")
+
+                    trajectory_data.append({
+                        "time": elapsed,
+                        "x": float(body_pos[0]),
+                        "y": float(body_pos[1]),
+                        "z": float(body_pos[2])
+                    })
+                except Exception as e:
+                    pass  # Silently skip if position read fails
+
             # Update viewer
             viewer.sync()
 
@@ -365,6 +388,22 @@ def main() -> int:
         print("  - Large std indicates adaptive behavior (good for rough terrain)")
         print("  - Small std indicates policy relies mostly on base parameters")
         print("  - Compare with base gait params to see adaptation magnitude")
+
+    # Save trajectory data if requested
+    if args.save_trajectory and trajectory_data:
+        output_path = Path(args.save_trajectory)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, 'w') as f:
+            json.dump({
+                "mode": "baseline" if args.baseline else "adaptive",
+                "duration": elapsed,
+                "total_steps": step_count,
+                "trajectory": trajectory_data
+            }, f, indent=2)
+
+        print(f"Trajectory data saved to: {output_path}")
+        print(f"  Total data points: {len(trajectory_data)}")
 
     return 0
 
