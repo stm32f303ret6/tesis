@@ -21,6 +21,8 @@ import argparse
 import json
 import time
 from pathlib import Path
+import os
+import sys
 
 import numpy as np
 import mujoco
@@ -60,7 +62,16 @@ def main() -> int:
     parser.add_argument("--no-reset", action="store_true", help="Disable automatic reset on termination (for visualization)")
     parser.add_argument("--baseline", action="store_true", help="Run baseline gait without residuals (zero actions)")
     parser.add_argument("--save-trajectory", type=str, default=None, help="Save trajectory data to JSON file")
+    parser.add_argument("--fullscreen", action="store_true", help="Start viewer in fullscreen (GLFW backend only)")
     args = parser.parse_args()
+
+    # Fullscreen feasibility checks
+    if args.fullscreen:
+        backend = os.environ.get("MUJOCO_GL", "glfw").lower()
+        if backend != "glfw":
+            print(f"Warning: --fullscreen requires MUJOCO_GL=glfw (current: {backend}); attempting maximize fallback.")
+        if sys.platform not in ("win32", "darwin") and not os.environ.get("DISPLAY"):
+            print("Warning: DISPLAY is not set; viewer may not open. Fullscreen unavailable in headless mode.")
 
     # Load model (unless baseline mode)
     model = None
@@ -114,13 +125,91 @@ def main() -> int:
     print(f"Deterministic:   {args.deterministic}")
     print(f"Terrain:         {'flat (world.xml)' if args.flat else 'rough (world_train.xml)'}")
     print(f"Auto-reset:      {'disabled' if args.no_reset else 'enabled'}")
+    print(f"Fullscreen:      {'enabled' if args.fullscreen else 'disabled'}")
     print(f"Mode:            {'BASELINE (zero actions - pure gait)' if args.baseline else f'ADAPTIVE (residual_scale={RESIDUAL_SCALE})'}")
     print("\nWatch the console for real-time gait parameter updates!")
     print("=" * 80)
     print()
 
-    # Open MuJoCo viewer
-    with mujoco.viewer.launch_passive(env.model, env.data) as viewer:
+    # Open MuJoCo viewer (hide side UIs when requesting fullscreen for a cleaner look)
+    with mujoco.viewer.launch_passive(
+        env.model,
+        env.data,
+        show_left_ui=not args.fullscreen,
+        show_right_ui=not args.fullscreen,
+    ) as viewer:
+        # Optional fullscreen handling (GLFW backend only)
+        if args.fullscreen:
+            try:
+                # Use MuJoCo-provided glfw bindings to avoid extra dependency
+                from mujoco import glfw  # type: ignore
+
+                # Try to locate the GLFW window handle via known attributes
+                window = None
+                # 1) Direct attributes on Handle (unlikely on 3.3+)
+                for name in ("_window", "window"):
+                    window = getattr(viewer, name, None)
+                    if window is not None:
+                        break
+                # 2) Reach into internal simulate object (private) and common names
+                if window is None and hasattr(viewer, "_get_sim"):
+                    sim = None
+                    try:
+                        sim = viewer._get_sim()  # type: ignore[attr-defined]
+                    except Exception:
+                        sim = None
+                    for name in ("glfw_window", "_glfw_window", "window", "_window", "context", "gl_context"):
+                        if sim is None:
+                            break
+                        cand = getattr(sim, name, None)
+                        # unwrap context objects that may hold the window
+                        if cand is not None and name in ("context", "gl_context"):
+                            cand = getattr(cand, "window", None)
+                        if cand is not None:
+                            window = cand
+                            break
+                if window is None:
+                    raise RuntimeError("Viewer window handle not available")
+
+                monitor = glfw.get_primary_monitor()
+                if not monitor:
+                    raise RuntimeError("No primary monitor detected (headless or backend not GLFW)")
+
+                mode = glfw.get_video_mode(monitor)
+                if mode is None:
+                    raise RuntimeError("Unable to query monitor video mode")
+
+                # Support both PyGLFW structures: mode.size.width or mode.width
+                if hasattr(mode, "size"):
+                    width, height = int(mode.size.width), int(mode.size.height)
+                else:
+                    width, height = int(getattr(mode, "width")), int(getattr(mode, "height"))
+
+                refresh = int(getattr(mode, "refresh_rate", getattr(glfw, "DONT_CARE", 0)))
+
+                glfw.set_window_monitor(window, monitor, 0, 0, width, height, refresh)
+                print(f"Fullscreen mode enabled ({width}x{height}@{refresh or 'NA'}Hz)")
+            except Exception as e:
+                # Fall back to maximize if fullscreen fails
+                try:
+                    from mujoco import glfw  # type: ignore
+                    # Try maximizing using any found window handle
+                    win = None
+                    for obj in (viewer, getattr(viewer, "_get_sim", lambda: None)()):
+                        for name in ("_window", "window", "glfw_window", "_glfw_window"):
+                            win = getattr(obj, name, None) if obj is not None else None
+                            if win is not None:
+                                break
+                        if win is not None:
+                            break
+                    if win is not None:
+                        glfw.maximize_window(win)
+                        print(f"Fullscreen not available ({e}); maximized window instead.")
+                    else:
+                        print(f"Fullscreen not available ({e}); continuing in windowed mode.")
+                except Exception:
+                    print(f"Fullscreen not available ({e}); continuing in windowed mode.")
+
         # Reset environment
         if use_vec_env:
             obs = vec_env.reset()

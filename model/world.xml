@@ -28,10 +28,10 @@
 </body>
 -->
 
-<body name="origin_axes" pos="0 0 0.1">
-  <geom type="capsule" size="0.001 0.1" rgba="1 0 0 1" fromto="0 0 0 10 0 0" contype="0" conaffinity="0"/>
-  <geom type="capsule" size="0.001 0.1" rgba="0 1 0 1" fromto="0 0 0 0 10 0" contype="0" conaffinity="0"/>
-  <geom type="capsule" size="0.001 0.1" rgba="0 0 1 1" fromto="0 0 0 0 0 10" contype="0" conaffinity="0"/>
+<body name="origin_axes" pos="0 0 0.03" >
+  <geom type="capsule" size="0.001 0.1" rgba="1 0 0 1" fromto="0 0 0 0.1 0 0" contype="0" conaffinity="0"/>
+  <geom type="capsule" size="0.001 0.1" rgba="0 1 0 1" fromto="0 0 0 0 0.1 0" contype="0" conaffinity="0"/>
+  <geom type="capsule" size="0.001 0.1" rgba="0 0 1 1" fromto="0 0 0 0 0 0.1" contype="0" conaffinity="0"/>
 </body>
 
 

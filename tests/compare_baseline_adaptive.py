@@ -57,6 +57,7 @@ def run_simulation(
         "play_adaptive_policy.py",
         "--seconds", str(duration),
         "--save-trajectory", output_file,
+        "--fullscreen"
     ]
 
     if baseline:
