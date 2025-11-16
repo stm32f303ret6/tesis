@@ -147,7 +147,7 @@ def plot_comparison(baseline_flat_data: Dict, baseline_rough_data: Dict, adaptiv
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
 
     # Plot 2: Baseline (Rough Terrain) - MIDDLE
-    ax2.plot(baseline_rough_times, baseline_rough_x, 'orange', linewidth=2, alpha=0.7)
+    ax2.plot(baseline_rough_times, baseline_rough_x, 'red', linewidth=2, alpha=0.7)
     ax2.set_xlabel('Time (s)', fontsize=12)
     ax2.set_ylabel('X Position (m)', fontsize=12)
     ax2.set_title('Step 2: Baseline\n(Pure Gait - Rough Terrain)', fontsize=13, fontweight='bold')

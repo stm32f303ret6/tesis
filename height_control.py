@@ -13,9 +13,9 @@ from utils.control_utils import apply_leg_angles, LEG_CONTROL
 IK_PARAMS = dict(L1=0.045, L2=0.06, base_dist=0.021, mode=2)
 FORWARD_SIGN = -1.0  # +1 keeps controller +X, -1 flips to match leg IK frame
 
-GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.1, step_height=0.04, cycle_time=1.4)
+GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.067, step_height=0.04, cycle_time=0.9)
 
-model = mujoco.MjModel.from_xml_path("model/world_train.xml")
+model = mujoco.MjModel.from_xml_path("model/world.xml")
 data = mujoco.MjData(model)
 robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
 
