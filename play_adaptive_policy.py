@@ -128,8 +128,20 @@ def main() -> int:
     print(f"Fullscreen:      {'enabled' if args.fullscreen else 'disabled'}")
     print(f"Mode:            {'BASELINE (zero actions - pure gait)' if args.baseline else f'ADAPTIVE (residual_scale={RESIDUAL_SCALE})'}")
     print("\nWatch the console for real-time gait parameter updates!")
+    print("Controls:        Press SPACE to pause/unpause simulation")
     print("=" * 80)
     print()
+
+    # Pause state (shared between keyboard callback and main loop)
+    paused = {"state": False}
+
+    def key_callback(keycode):
+        """Handle keyboard input for pause/unpause."""
+        # Space key code is 32 in MuJoCo
+        if keycode == 32:  # Space key
+            paused["state"] = not paused["state"]
+            status = "PAUSED" if paused["state"] else "RESUMED"
+            print(f"\n[Simulation {status}]\n")
 
     # Open MuJoCo viewer (hide side UIs when requesting fullscreen for a cleaner look)
     with mujoco.viewer.launch_passive(
@@ -137,6 +149,7 @@ def main() -> int:
         env.data,
         show_left_ui=not args.fullscreen,
         show_right_ui=not args.fullscreen,
+        key_callback=key_callback,
     ) as viewer:
         # Optional fullscreen handling (GLFW backend only)
         if args.fullscreen:
@@ -217,6 +230,8 @@ def main() -> int:
             obs, _ = env.reset()
 
         start_time = time.time()
+        pause_start_time = 0.0
+        total_pause_time = 0.0
         step_count = 0
         last_print_time = start_time
         print_interval = 1.0  # Print gait params every 1 second
@@ -232,10 +247,34 @@ def main() -> int:
         # Tracking for trajectory (if requested)
         trajectory_data = []
 
+        was_paused = False
+
         while True:
-            elapsed = time.time() - start_time
+            # Calculate elapsed time excluding paused periods
+            current_time = time.time()
+            if paused["state"]:
+                if not was_paused:
+                    # Just entered pause state
+                    pause_start_time = current_time
+                    was_paused = True
+                # While paused, freeze elapsed time at the moment we paused
+                elapsed = pause_start_time - start_time - total_pause_time
+            else:
+                if was_paused:
+                    # Just exited pause state
+                    total_pause_time += current_time - pause_start_time
+                    was_paused = False
+                # When running, count time excluding all pause periods
+                elapsed = current_time - start_time - total_pause_time
+
             if elapsed >= args.seconds:
                 break
+
+            # Handle pause state - skip simulation steps but keep viewer responsive
+            if paused["state"]:
+                viewer.sync()
+                time.sleep(0.01)  # Small sleep to prevent busy-waiting
+                continue
 
             # Store pre-step diagnostics for termination analysis
             if use_vec_env:
