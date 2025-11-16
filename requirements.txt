@@ -1,5 +1,6 @@
 mujoco
 numpy
+scipy
 transitions
 bezier
 matplotlib
