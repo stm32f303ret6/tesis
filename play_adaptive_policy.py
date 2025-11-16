@@ -86,9 +86,9 @@ def main() -> int:
         model_path=model_path,
         gait_params=GaitParameters(
             body_height=0.05,
-            step_length=0.06,
+            step_length=0.1,
             step_height=0.04,
-            cycle_time=0.8
+            cycle_time=1.4
         ),
         residual_scale=RESIDUAL_SCALE,
         max_episode_steps=60000,
