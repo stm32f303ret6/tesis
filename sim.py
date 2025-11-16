@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import time
 from dataclasses import dataclass
@@ -134,13 +135,12 @@ class RobotControlNode(Node):
             self.get_logger().error(f'Failed to publish body state: {e}')
 
 
-model = mujoco.MjModel.from_xml_path("model/world.xml")
-data = mujoco.MjData(model)
-robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
-
-# Get sensor IDs
-body_pos_sensor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "body_pos")
-body_quat_sensor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "body_quat")
+# Global variables for MuJoCo model and data (initialized in main)
+model = None
+data = None
+robot_body_id = None
+body_pos_sensor_id = None
+body_quat_sensor_id = None
 
 
 def apply_leg_angles(ctrl: mujoco.MjData, leg: str, angles: Tuple[float, float, float]) -> None:
@@ -199,6 +199,27 @@ def apply_gait_targets(controller: DiagonalGaitController, timestep: float, move
 
 
 def main() -> None:
+    global model, data, robot_body_id, body_pos_sensor_id, body_quat_sensor_id
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Quadruped robot simulation with MuJoCo and ROS2')
+    parser.add_argument('--terrain', type=str, choices=['flat', 'rough'], default='flat',
+                        help='Terrain type: flat (default) or rough')
+    args = parser.parse_args()
+
+    # Select world file based on terrain argument
+    world_file = "model/world.xml" if args.terrain == 'flat' else "model/world_train.xml"
+    print(f"Loading world: {world_file} ({args.terrain} terrain)")
+
+    # Load MuJoCo model
+    model = mujoco.MjModel.from_xml_path(world_file)
+    data = mujoco.MjData(model)
+    robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
+
+    # Get sensor IDs
+    body_pos_sensor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "body_pos")
+    body_quat_sensor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "body_quat")
+
     # Initialize ROS2
     rclpy.init()
 

@@ -16,7 +16,8 @@
       "Bash(MUJOCO_GL=egl timeout 60 python3:*)",
       "Bash(sqlite3:*)",
       "Bash(ros2 --version:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Bash(MUJOCO_GL=egl timeout 3 python3:*)"
     ],
     "deny": [],
     "ask": []
