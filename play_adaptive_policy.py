@@ -72,10 +72,18 @@ def main() -> int:
         print(f"Loading model from {args.model}...")
         model = PPO.load(args.model)
 
+    # Determine terrain model path
+    if args.flat:
+        model_path = "model/world.xml"
+        terrain_name = "flat (world.xml)"
+    else:
+        model_path = "model/world_train.xml"
+        terrain_name = "rough (world_train.xml)"
+
     # Create environment
-    print("Creating environment...")
+    print(f"Creating environment with {terrain_name}...")
     env = AdaptiveGaitEnv(
-        model_path="model/world_train.xml",
+        model_path=model_path,
         gait_params=GaitParameters(
             body_height=0.05,
             step_length=0.06,
@@ -86,22 +94,6 @@ def main() -> int:
         max_episode_steps=60000,
         settle_steps=0,
     )
-
-    # Override with flat terrain if requested
-    if args.flat:
-        print("Using flat terrain (world.xml)")
-        env = AdaptiveGaitEnv(
-            model_path="model/world_train.xml",
-            gait_params=GaitParameters(
-                body_height=0.05,
-                step_length=0.06,
-                step_height=0.04,
-                cycle_time=0.8
-            ),
-            residual_scale=RESIDUAL_SCALE,
-            max_episode_steps=60000,
-            settle_steps=0,
-        )
 
     # Wrap for normalization if stats provided
     if args.normalize:
