@@ -2,9 +2,14 @@
 
 ## TFG Ricardo Casimiro
 
-Simulación de robot cuadrúpedo con MuJoCo, ROS2 y aprendizaje por refuerzo. El robot implementa un diseño de patas SCARA paralelo de 3DOF con control de inclinación, permitiendo control independiente de altura, posición lateral y ángulo de inclinación de cada pata.
+Simulación de robot cuadrúpedo 12DOF con MuJoCo, Gymnasium, ROS2 y aprendizaje por refuerzo profundo PPO(StableBaseline3)
 
-El proyecto compara un controlador de marcha puramente cinemático (baseline) con un controlador adaptativo entrenado con aprendizaje por refuerzo (RL) para navegación en terreno irregular.
+El desarrollo CAD del robot es propio(OpenScad) y puede ser usado en la vida real(no testeado)
+
+El robot implementa un diseño de patas SCARA paralelo de 3DOF(5BarLinkage), cinematica inversa 3DOF, curvas de Bezier para locomocion (marchas), y control adaptativo mediante residuales aprendidos durante el entrenamiento
+
+El test principal compara un controlador de marcha puramente cinemático (baseline) con un controlador adaptativo entrenado con aprendizaje por refuerzo (RL) para navegación en terreno irregular.
+
 ## [Video Demo](https://drive.google.com/file/d/1ZFX_Mz6WEISDz5IWsRfotk7-QPtXtzc1/view)
 
 
@@ -15,7 +20,7 @@ El proyecto compara un controlador de marcha puramente cinemático (baseline) co
 - **Control Adaptativo con RL**: Política entrenada con Stable Baselines 3 (PPO) que añade correcciones residuales a la marcha baseline
 - **Simulación Física**: Motor MuJoCo para física realista y renderizado
 - **Integración ROS2**: Comunicación entre simulación y GUI mediante topics y servicios
-- **GUI con Joystick**: Interfaz PyQt5 con soporte para control mediante gamepad
+- **GUI con Joystick**: Interfaz PyQt5 con soporte para control mediante joystick
 - **Terrenos Múltiples**: Entorno plano y terreno irregular para entrenamiento/evaluación
 
 https://github.com/user-attachments/assets/0e2e2d83-e022-4127-b9a3-516ac36cb123
@@ -109,25 +114,35 @@ El script ejecuta automáticamente tres casos y genera gráficas comparativas:
 
 El script genera:
 
-1. **Consola**: Tabla comparativa con métricas
+1. **Terminal**: Tabla comparativa con métricas
    ```
-   COMPARISON SUMMARY - THREE SIMULATIONS
-   ========================================================================
-   Metric                         Step 1: Baseline    Step 2: Baseline    Step 3: Adaptive
-                                  (Flat)              (Rough)             (Rough)
-   ------------------------------------------------------------------------
-   Distance traveled (m)          1.234               0.567               1.089
-   Average velocity (m/s)         0.073               0.033               0.064
+===============================================================================================
+COMPARISON SUMMARY - THREE SIMULATIONS
+===============================================================================================
 
-   Performance Comparison:
-     Step 2 vs Step 1 (Rough vs Flat):      -54.1%
-     Step 3 vs Step 2 (Adaptive vs Rough):  +92.1%
+Metric                         Step 1: Baseline     Step 2: Baseline     Step 3: Adaptive    
+                               (Flat)               (Rough)              (Rough)             
+-----------------------------------------------------------------------------------------------
+Duration (s)                   17.00                17.00                17.00               
+Data points                    9069                 8966                 7128                
+Start X (m)                    0.000                0.000                0.000               
+End X (m)                      0.506                0.299                3.191               
+Distance traveled (m)          0.506                0.299                3.191               
+Average velocity (m/s)         0.030                0.018                0.188               
+
+Performance Comparison:
+  Step 2 vs Step 1 (Rough vs Flat):      -40.9%
+  Step 3 vs Step 2 (Adaptive vs Rough):  +967.2%
+===============================================================================================
    ```
 
 2. **Gráfica de 3 paneles**: `tests/baseline_vs_adaptive_comparison.png`
    - Cada panel muestra tiempo vs posición X
    - Marcadores de inicio (verde) y fin (rojo)
    - Cuadro de estadísticas con distancia, velocidad y % de cambio
+
+<img width="2679" height="728" alt="Image" src="https://github.com/user-attachments/assets/2b51f4d2-c070-4e63-8125-2ee96cce5359" />
+
 
 3. **Archivos de trayectoria JSON**:
    - `tests/trajectory_step1_baseline_flat.json`
@@ -234,7 +249,6 @@ walk2/
 ├── height_control.py            # Simulación standalone
 ├── sim.py                       # Simulación con ROS2
 ├── play_adaptive_policy.py      # Ejecutar política entrenada
-└── CLAUDE.md                    # Documentación técnica detallada
 ```
 
 ## Desarrollo
