@@ -116,33 +116,35 @@ El script genera:
 
 1. **Terminal**: Tabla comparativa con métricas
    ```
-===============================================================================================
-COMPARISON SUMMARY - THREE SIMULATIONS
-===============================================================================================
+    ===============================================================================================
+    COMPARISON SUMMARY - THREE SIMULATIONS
+    ===============================================================================================
 
-Metric                         Step 1: Baseline     Step 2: Baseline     Step 3: Adaptive    
-                               (Flat)               (Rough)              (Rough)             
------------------------------------------------------------------------------------------------
-Duration (s)                   17.00                17.00                17.00               
-Data points                    9069                 8966                 7128                
-Start X (m)                    0.000                0.000                0.000               
-End X (m)                      0.506                0.299                3.191               
-Distance traveled (m)          0.506                0.299                3.191               
-Average velocity (m/s)         0.030                0.018                0.188               
+    Metric                         Step 1: Baseline     Step 2: Baseline     Step 3: Adaptive    
+                                   (Flat)               (Rough)              (Rough)             
+    -----------------------------------------------------------------------------------------------
+    Duration (s)                   17.00                17.00                17.00               
+    Data points                    9069                 8966                 7128                
+    Start X (m)                    0.000                0.000                0.000               
+    End X (m)                      0.506                0.299                3.191               
+    Distance traveled (m)          0.506                0.299                3.191               
+    Average velocity (m/s)         0.030                0.018                0.188               
 
-Performance Comparison:
-  Step 2 vs Step 1 (Rough vs Flat):      -40.9%
-  Step 3 vs Step 2 (Adaptive vs Rough):  +967.2%
-===============================================================================================
+    Performance Comparison:
+      Step 2 vs Step 1 (Rough vs Flat):      -40.9%
+      Step 3 vs Step 2 (Adaptive vs Rough):  +967.2%
+    ===============================================================================================
    ```
+   
+
 
 2. **Gráfica de 3 paneles**: `tests/baseline_vs_adaptive_comparison.png`
    - Cada panel muestra tiempo vs posición X
    - Marcadores de inicio (verde) y fin (rojo)
    - Cuadro de estadísticas con distancia, velocidad y % de cambio
 
-<img width="2679" height="728" alt="Image" src="https://github.com/user-attachments/assets/2b51f4d2-c070-4e63-8125-2ee96cce5359" />
 
+<img width="2679" height="728" alt="Image" src="https://github.com/user-attachments/assets/2b51f4d2-c070-4e63-8125-2ee96cce5359" />
 
 3. **Archivos de trayectoria JSON**:
    - `tests/trajectory_step1_baseline_flat.json`
