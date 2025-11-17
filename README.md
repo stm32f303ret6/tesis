@@ -1,11 +1,13 @@
 # Robot Cuadrúpedo con Control Adaptativo
 
+## TFG Ricardo Casimiro
+
 Simulación de robot cuadrúpedo con MuJoCo, ROS2 y aprendizaje por refuerzo. El robot implementa un diseño de patas SCARA paralelo de 3DOF con control de inclinación, permitiendo control independiente de altura, posición lateral y ángulo de inclinación de cada pata.
 
 El proyecto compara un controlador de marcha puramente cinemático (baseline) con un controlador adaptativo entrenado con aprendizaje por refuerzo (RL) para navegación en terreno irregular.
-[Video Demo](https://drive.google.com/file/d/1ZFX_Mz6WEISDz5IWsRfotk7-QPtXtzc1/view)
+## [Video Demo](https://drive.google.com/file/d/1ZFX_Mz6WEISDz5IWsRfotk7-QPtXtzc1/view)
 
-https://github.com/user-attachments/assets/0e2e2d83-e022-4127-b9a3-516ac36cb123
+
 
 ## Características Principales
 
@@ -15,6 +17,8 @@ https://github.com/user-attachments/assets/0e2e2d83-e022-4127-b9a3-516ac36cb123
 - **Integración ROS2**: Comunicación entre simulación y GUI mediante topics y servicios
 - **GUI con Joystick**: Interfaz PyQt5 con soporte para control mediante gamepad
 - **Terrenos Múltiples**: Entorno plano y terreno irregular para entrenamiento/evaluación
+
+https://github.com/user-attachments/assets/0e2e2d83-e022-4127-b9a3-516ac36cb123
 
 ## Instalación
 
