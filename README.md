@@ -3,6 +3,9 @@
 Simulación de robot cuadrúpedo con MuJoCo, ROS2 y aprendizaje por refuerzo. El robot implementa un diseño de patas SCARA paralelo de 3DOF con control de inclinación, permitiendo control independiente de altura, posición lateral y ángulo de inclinación de cada pata.
 
 El proyecto compara un controlador de marcha puramente cinemático (baseline) con un controlador adaptativo entrenado con aprendizaje por refuerzo (RL) para navegación en terreno irregular.
+[Video Demo](https://drive.google.com/file/d/1ZFX_Mz6WEISDz5IWsRfotk7-QPtXtzc1/view)
+
+https://github.com/user-attachments/assets/0e2e2d83-e022-4127-b9a3-516ac36cb123
 
 ## Características Principales
 
@@ -81,20 +84,20 @@ El script ejecuta automáticamente tres casos y genera gráficas comparativas:
 **Paso 1: Baseline en Terreno Plano** (Izquierda - Azul)
 - Usa el controlador cinemático puro sin RL
 - Terreno completamente plano (`world.xml`)
-- **Resultado esperado**: ✅ Funciona bien, progresión lineal estable
+- **Resultado esperado**: Funciona bien, progresión lineal estable
 - Demuestra que el modelo cinemático baseline funciona correctamente en condiciones ideales
 
 **Paso 2: Baseline en Terreno Irregular** (Centro - Rojo)
 - Mismo controlador cinemático puro
 - Terreno con elevaciones y depresiones aleatorias (`world_train.xml`)
-- **Resultado esperado**: ❌ Rendimiento degradado significativamente
+- **Resultado esperado**: Rendimiento degradado significativamente
 - El robot avanza mucho menos debido a que el controlador no se adapta a las irregularidades
 - Muestra pérdida de eficiencia de ~40-60% comparado con terreno plano
 
 **Paso 3: Adaptativo RL en Terreno Irregular** (Derecha - Verde)
 - Controlador baseline + correcciones de política entrenada con RL
 - Mismo terreno irregular que Paso 2
-- **Resultado esperado**: ✅ Mejora sustancial, alcanza distancia mucho mayor
+- **Resultado esperado**: Mejora sustancial, alcanza distancia mucho mayor
 - El modelo adaptativo añade ajustes dinámicos que compensan las irregularidades
 - Recupera gran parte del rendimiento perdido, mejorando ~80-150% vs Paso 2
 
@@ -293,4 +296,4 @@ Configurados en `gait_controller.py`:
 - [ROS2 Jazzy Documentation](https://docs.ros.org/en/jazzy/)
 - [Stable Baselines 3](https://stable-baselines3.readthedocs.io/)
 
-Para más detalles técnicos, consulta `CLAUDE.md` y `ROS2_INTEGRATION.md`.
+
