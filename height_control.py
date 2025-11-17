@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import time
 from typing import Dict, Tuple
 
@@ -13,11 +14,12 @@ from utils.control_utils import apply_leg_angles, LEG_CONTROL
 IK_PARAMS = dict(L1=0.045, L2=0.06, base_dist=0.021, mode=2)
 FORWARD_SIGN = -1.0  # +1 keeps controller +X, -1 flips to match leg IK frame
 
-GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.067, step_height=0.04, cycle_time=0.9)
+GAIT_PARAMS = GaitParameters(body_height=0.05, step_length=0.06, step_height=0.04, cycle_time=0.8)
 
-model = mujoco.MjModel.from_xml_path("model/world.xml")
-data = mujoco.MjData(model)
-robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
+# Global variables for MuJoCo model and data (initialized in main)
+model = None
+data = None
+robot_body_id = None
 
 
 def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> None:
@@ -43,6 +45,23 @@ def apply_gait_targets(controller: DiagonalGaitController, timestep: float) -> N
 
 
 def main() -> None:
+    global model, data, robot_body_id
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Standalone quadruped robot simulation with MuJoCo')
+    parser.add_argument('--terrain', type=str, choices=['flat', 'rough'], default='rough',
+                        help='Terrain type: flat or rough (default)')
+    args = parser.parse_args()
+
+    # Select world file based on terrain argument
+    world_file = "model/world.xml" if args.terrain == 'flat' else "model/world_train.xml"
+    print(f"Loading world: {world_file} ({args.terrain} terrain)")
+
+    # Load MuJoCo model
+    model = mujoco.MjModel.from_xml_path(world_file)
+    data = mujoco.MjData(model)
+    robot_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "robot")
+
     controller = DiagonalGaitController(GAIT_PARAMS)
     controller.reset()
 
