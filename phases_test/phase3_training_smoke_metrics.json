@@ -1,5 +1,0 @@
-{
-  "timesteps": 10000,
-  "tensorboard_logdir_exists": true,
-  "episode_reward_mean_present": true
-}
